@@ -4,6 +4,57 @@ const TOOLBAR_ID = "toolbar-buttons";
 const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
 const PLACED_OBJECT_SIZE = 40;
+const AMBIENT_MASTER_VOLUME = 0.14;
+const AMBIENT_FADE_SECONDS = 1.25;
+const AMBIENT_MIN_GAIN = 0.0001;
+const WIND_SCHEDULE_AHEAD_SECONDS = 10;
+const DEFAULT_WIND_CROSSFADE_SECONDS = 1.25;
+const AUDIO_ASSET_ROOT = new URL("../assets/audio/", import.meta.url);
+const AUDIO_ASSET_FILES = {
+  wind: ["farm-wind-whistling-loop.ogg"],
+  chickens: ["farm-chickens-clucking-01.ogg", "farm-chickens-clucking-02.ogg"],
+  cows: ["farm-cows-mooing-01.ogg", "farm-cows-mooing-02.ogg"],
+  rooster: ["farm-rooster-crow-01.ogg"],
+  pigs: ["farm-pigs-oinking-01.ogg", "farm-pigs-oinking-02.ogg"],
+};
+const AMBIENT_ONE_SHOT_GROUPS = {
+  chickens: {
+    volume: 0.22,
+    minDelay: 4,
+    maxDelay: 8,
+    minPan: -0.45,
+    maxPan: 0.35,
+    minPlaybackRate: 0.96,
+    maxPlaybackRate: 1.05,
+  },
+  cows: {
+    volume: 0.26,
+    minDelay: 11,
+    maxDelay: 18,
+    minPan: -0.5,
+    maxPan: 0.45,
+    minPlaybackRate: 0.97,
+    maxPlaybackRate: 1.02,
+  },
+  rooster: {
+    volume: 0.18,
+    minDelay: 19,
+    maxDelay: 30,
+    minPan: -0.2,
+    maxPan: 0.2,
+    minPlaybackRate: 0.99,
+    maxPlaybackRate: 1.01,
+  },
+  pigs: {
+    volume: 0.18,
+    minDelay: 10,
+    maxDelay: 17,
+    minPan: -0.4,
+    maxPan: 0.4,
+    minPlaybackRate: 0.96,
+    maxPlaybackRate: 1.04,
+  },
+};
 
 const FARM_OBJECTS = [
   { id: "barn", label: "Barn", icon: "🏠" },
@@ -17,6 +68,15 @@ const FARM_OBJECTS = [
 const state = {
   activeObjectId: FARM_OBJECTS[0].id,
   placements: [],
+  ambientAudioStarted: false,
+  ambientAudioContext: null,
+  ambientMasterGain: null,
+  ambientBuffers: null,
+  ambientLoadPromise: null,
+  ambientSuspendTimeoutId: null,
+  ambientWindSchedulerTimeoutId: null,
+  ambientWindScheduledUntil: 0,
+  ambientOneShotTimeoutIds: {},
 };
 const SOURCE_TILE_SIZE = 32;
 const TILE_SCALE = 3;
@@ -70,6 +130,335 @@ const BLADE_STAMPS = [
 function hash2D(x, y) {
   const value = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123;
   return value - Math.floor(value);
+}
+
+function randomBetween(min, max) {
+  return min + Math.random() * (max - min);
+}
+
+function getAudioAssetUrl(fileName) {
+  return new URL(fileName, AUDIO_ASSET_ROOT).toString();
+}
+
+function getRandomArrayItem(items) {
+  if (!items || items.length === 0) {
+    return null;
+  }
+
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+async function loadAudioBuffer(audioContext, fileName) {
+  const response = await fetch(getAudioAssetUrl(fileName));
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${fileName}: ${response.status}`);
+  }
+
+  const fileData = await response.arrayBuffer();
+  return audioContext.decodeAudioData(fileData.slice(0));
+}
+
+async function loadAmbientBuffers(audioContext) {
+  if (state.ambientBuffers) {
+    return state.ambientBuffers;
+  }
+
+  if (state.ambientLoadPromise) {
+    return state.ambientLoadPromise;
+  }
+
+  state.ambientLoadPromise = Promise.all(
+    Object.entries(AUDIO_ASSET_FILES).map(async ([groupName, fileNames]) => {
+      const loadedBuffers = [];
+
+      for (const fileName of fileNames) {
+        try {
+          const buffer = await loadAudioBuffer(audioContext, fileName);
+          loadedBuffers.push(buffer);
+        } catch (error) {
+          console.warn(`Unable to load ambient asset: ${fileName}`, error);
+        }
+      }
+
+      return [groupName, loadedBuffers];
+    }),
+  )
+    .then((entries) => {
+      state.ambientBuffers = Object.fromEntries(entries);
+
+      if (Object.values(state.ambientBuffers).every((buffers) => buffers.length === 0)) {
+        console.warn("Ambient audio assets are missing from assets/audio/.");
+      }
+
+      return state.ambientBuffers;
+    })
+    .finally(() => {
+      state.ambientLoadPromise = null;
+    });
+
+  return state.ambientLoadPromise;
+}
+
+function connectWithOptionalPan(audioContext, inputNode, destination, pan) {
+  if (typeof audioContext.createStereoPanner === "function") {
+    const panner = audioContext.createStereoPanner();
+    panner.pan.setValueAtTime(Math.max(-1, Math.min(1, pan)), audioContext.currentTime);
+    inputNode.connect(panner);
+    panner.connect(destination);
+    return;
+  }
+
+  inputNode.connect(destination);
+}
+
+function clearAmbientScheduling() {
+  if (state.ambientWindSchedulerTimeoutId) {
+    window.clearTimeout(state.ambientWindSchedulerTimeoutId);
+    state.ambientWindSchedulerTimeoutId = null;
+  }
+
+  for (const timeoutId of Object.values(state.ambientOneShotTimeoutIds)) {
+    window.clearTimeout(timeoutId);
+  }
+
+  state.ambientOneShotTimeoutIds = {};
+}
+
+function fadeAmbientGain(targetValue, durationSeconds) {
+  if (!state.ambientAudioContext || !state.ambientMasterGain) {
+    return;
+  }
+
+  const now = state.ambientAudioContext.currentTime;
+  const gainParam = state.ambientMasterGain.gain;
+  const currentValue = Math.max(AMBIENT_MIN_GAIN, gainParam.value);
+
+  gainParam.cancelScheduledValues(now);
+  gainParam.setValueAtTime(currentValue, now);
+  gainParam.linearRampToValueAtTime(Math.max(AMBIENT_MIN_GAIN, targetValue), now + durationSeconds);
+}
+
+function scheduleWindSource(buffer, startTime) {
+  if (!state.ambientAudioContext || !state.ambientMasterGain) {
+    return;
+  }
+
+  const audioContext = state.ambientAudioContext;
+  const source = audioContext.createBufferSource();
+  const gainNode = audioContext.createGain();
+  const crossfadeSeconds = Math.min(
+    DEFAULT_WIND_CROSSFADE_SECONDS,
+    Math.max(0.15, buffer.duration / 4),
+  );
+  const endTime = startTime + buffer.duration;
+  const fadeOutStart = Math.max(startTime + crossfadeSeconds, endTime - crossfadeSeconds);
+
+  source.buffer = buffer;
+  source.connect(gainNode);
+  gainNode.connect(state.ambientMasterGain);
+  gainNode.gain.setValueAtTime(AMBIENT_MIN_GAIN, startTime);
+  gainNode.gain.linearRampToValueAtTime(1, startTime + crossfadeSeconds);
+  gainNode.gain.setValueAtTime(1, fadeOutStart);
+  gainNode.gain.linearRampToValueAtTime(AMBIENT_MIN_GAIN, endTime);
+  source.start(startTime);
+  source.stop(endTime + 0.05);
+
+  return buffer.duration - crossfadeSeconds;
+}
+
+function ensureWindScheduled() {
+  if (!state.ambientAudioContext || !state.ambientBuffers?.wind?.length || document.hidden) {
+    return;
+  }
+
+  const audioContext = state.ambientAudioContext;
+  const windBuffer = state.ambientBuffers.wind[0];
+  const now = audioContext.currentTime;
+  let nextStartTime = Math.max(state.ambientWindScheduledUntil, now);
+
+  if (nextStartTime <= now + 0.05) {
+    nextStartTime = now;
+  }
+
+  while (nextStartTime < now + WIND_SCHEDULE_AHEAD_SECONDS) {
+    const intervalSeconds = scheduleWindSource(windBuffer, nextStartTime);
+    if (!intervalSeconds) {
+      return;
+    }
+
+    nextStartTime += intervalSeconds;
+  }
+
+  state.ambientWindScheduledUntil = nextStartTime;
+  state.ambientWindSchedulerTimeoutId = window.setTimeout(() => {
+    state.ambientWindSchedulerTimeoutId = null;
+    ensureWindScheduled();
+  }, 1000);
+}
+
+function playOneShot(buffer, { gain, pan, playbackRate }) {
+  if (!state.ambientAudioContext || !state.ambientMasterGain) {
+    return;
+  }
+
+  const audioContext = state.ambientAudioContext;
+  const source = audioContext.createBufferSource();
+  const gainNode = audioContext.createGain();
+  const now = audioContext.currentTime;
+  const clampedPlaybackRate = Math.max(0.5, playbackRate);
+  const playbackDuration = buffer.duration / clampedPlaybackRate;
+  const fadeInSeconds = Math.min(0.04, playbackDuration / 4);
+  const fadeOutSeconds = Math.min(0.08, playbackDuration / 3);
+  const fadeOutStart = Math.max(now + fadeInSeconds, now + playbackDuration - fadeOutSeconds);
+
+  source.buffer = buffer;
+  source.playbackRate.setValueAtTime(clampedPlaybackRate, now);
+  source.connect(gainNode);
+  connectWithOptionalPan(audioContext, gainNode, state.ambientMasterGain, pan);
+
+  gainNode.gain.setValueAtTime(AMBIENT_MIN_GAIN, now);
+  gainNode.gain.linearRampToValueAtTime(gain, now + fadeInSeconds);
+  gainNode.gain.setValueAtTime(gain, fadeOutStart);
+  gainNode.gain.linearRampToValueAtTime(AMBIENT_MIN_GAIN, now + playbackDuration);
+
+  source.start(now);
+  source.stop(now + playbackDuration + 0.05);
+}
+
+function scheduleAnimalGroup(groupName) {
+  if (!state.ambientAudioStarted || !state.ambientBuffers || document.hidden) {
+    return;
+  }
+
+  const groupConfig = AMBIENT_ONE_SHOT_GROUPS[groupName];
+  const groupBuffers = state.ambientBuffers[groupName];
+  if (!groupConfig || !groupBuffers || groupBuffers.length === 0) {
+    return;
+  }
+
+  const delayMs = randomBetween(groupConfig.minDelay, groupConfig.maxDelay) * 1000;
+  state.ambientOneShotTimeoutIds[groupName] = window.setTimeout(() => {
+    const buffer = getRandomArrayItem(groupBuffers);
+
+    if (buffer && !document.hidden) {
+      playOneShot(buffer, {
+        gain: groupConfig.volume,
+        pan: randomBetween(groupConfig.minPan, groupConfig.maxPan),
+        playbackRate: randomBetween(
+          groupConfig.minPlaybackRate,
+          groupConfig.maxPlaybackRate,
+        ),
+      });
+    }
+
+    scheduleAnimalGroup(groupName);
+  }, delayMs);
+}
+
+function scheduleAnimalGroups() {
+  Object.keys(AMBIENT_ONE_SHOT_GROUPS).forEach((groupName) => {
+    if (!state.ambientOneShotTimeoutIds[groupName]) {
+      scheduleAnimalGroup(groupName);
+    }
+  });
+}
+
+function scheduleAmbientSuspend() {
+  if (!state.ambientAudioContext || document.hidden === false) {
+    return;
+  }
+
+  if (state.ambientSuspendTimeoutId) {
+    window.clearTimeout(state.ambientSuspendTimeoutId);
+  }
+
+  clearAmbientScheduling();
+  fadeAmbientGain(AMBIENT_MIN_GAIN, 0.2);
+  state.ambientSuspendTimeoutId = window.setTimeout(() => {
+    if (state.ambientAudioContext && document.hidden) {
+      state.ambientAudioContext.suspend().catch(() => {});
+    }
+    state.ambientSuspendTimeoutId = null;
+  }, 220);
+}
+
+function resumeAmbientAudio() {
+  if (!state.ambientAudioContext || !state.ambientMasterGain) {
+    return;
+  }
+
+  if (state.ambientSuspendTimeoutId) {
+    window.clearTimeout(state.ambientSuspendTimeoutId);
+    state.ambientSuspendTimeoutId = null;
+  }
+
+  const resumeAndFade = () => {
+    state.ambientMasterGain.gain.setValueAtTime(
+      AMBIENT_MIN_GAIN,
+      state.ambientAudioContext.currentTime,
+    );
+    fadeAmbientGain(AMBIENT_MASTER_VOLUME, AMBIENT_FADE_SECONDS);
+    ensureWindScheduled();
+    scheduleAnimalGroups();
+  };
+
+  if (state.ambientAudioContext.state === "suspended") {
+    state.ambientAudioContext.resume().then(resumeAndFade).catch(() => {});
+    return;
+  }
+
+  resumeAndFade();
+}
+
+async function startAmbientAudio() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) {
+    return;
+  }
+
+  try {
+    if (!state.ambientAudioContext) {
+      const audioContext = new AudioContextClass();
+      const masterGain = audioContext.createGain();
+
+      masterGain.gain.setValueAtTime(AMBIENT_MIN_GAIN, audioContext.currentTime);
+      masterGain.connect(audioContext.destination);
+
+      state.ambientAudioContext = audioContext;
+      state.ambientMasterGain = masterGain;
+    }
+
+    if (!state.ambientBuffers) {
+      await loadAmbientBuffers(state.ambientAudioContext);
+    }
+
+    state.ambientAudioStarted = true;
+    resumeAmbientAudio();
+  } catch (error) {
+    console.error("Unable to start ambient audio.", error);
+  }
+}
+
+function setupAmbientAudio() {
+  const { view } = getViewAndCanvas();
+  const activateAmbientAudio = () => {
+    startAmbientAudio();
+  };
+
+  view.addEventListener("pointerdown", activateAmbientAudio, { passive: true });
+  window.addEventListener("keydown", activateAmbientAudio, { passive: true });
+  document.addEventListener("visibilitychange", () => {
+    if (!state.ambientAudioStarted) {
+      return;
+    }
+
+    if (document.hidden) {
+      scheduleAmbientSuspend();
+      return;
+    }
+
+    resumeAmbientAudio();
+  });
 }
 
 function getViewAndCanvas() {
@@ -374,6 +763,7 @@ function resizeAndRender() {
 function init() {
   renderToolbar();
   setActiveObject(state.activeObjectId);
+  setupAmbientAudio();
   setupPlacementInput();
   resizeAndRender();
   window.addEventListener("resize", resizeAndRender);
