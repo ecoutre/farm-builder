@@ -3,23 +3,61 @@ const BACKGROUND_ID = "farm-background";
 const TOOLBAR_ID = "toolbar-buttons";
 const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
-const SPRITE_VIEWBOX_SIZE = 64;
+const PIXEL_PALETTE = {
+  A: "#c8473c",
+  B: "#5d4230",
+  D: "#8f6b44",
+  G: "#4d7f3b",
+  H: "#c79a2d",
+  L: "#c89a5a",
+  O: "#2f241b",
+  P: "#d99ba0",
+  R: "#d66355",
+  S: "#5c7341",
+  T: "#6f4b2b",
+  W: "#f2eadb",
+  Y: "#dfa13b",
+  g: "#76b95e",
+  h: "#e6c253",
+  r: "#a53f36",
+  t: "#946740",
+  w: "#c9c1b7",
+};
 
-function createSpriteAsset(content) {
+function createPixelSpriteAsset({ width, height, pixels }) {
+  const rects = [];
+
+  pixels.forEach((row, y) => {
+    if (row.length > width) {
+      throw new Error(`Sprite row exceeds width ${width}.`);
+    }
+
+    const paddedRow = row.padEnd(width, ".");
+
+    for (let x = 0; x < paddedRow.length; x += 1) {
+      const key = paddedRow[x];
+      if (key === ".") {
+        continue;
+      }
+
+      const color = PIXEL_PALETTE[key];
+      if (!color) {
+        throw new Error(`Unknown sprite palette key: ${key}`);
+      }
+
+      rects.push(`<rect x="${x}" y="${y}" width="1" height="1" fill="${color}" />`);
+    }
+  });
+
   const svg = `
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 ${SPRITE_VIEWBOX_SIZE} ${SPRITE_VIEWBOX_SIZE}"
+      width="${width}"
+      height="${height}"
+      viewBox="0 0 ${width} ${height}"
+      shape-rendering="crispEdges"
     >
-      <g
-        fill="none"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        stroke="#2f241b"
-        stroke-width="2.25"
-      >
-        ${content}
-      </g>
+      ${rects.join("")}
     </svg>
   `;
 
@@ -30,14 +68,27 @@ const FARM_OBJECTS = [
   {
     id: "fence",
     label: "Fence",
-    sprite: createSpriteAsset(`
-      <ellipse cx="32" cy="53" rx="24" ry="5" fill="#2c5b25" opacity="0.28" stroke="none" />
-      <rect x="9" y="18" width="8" height="28" rx="2" fill="#d29a56" />
-      <rect x="28" y="14" width="8" height="32" rx="2" fill="#d29a56" />
-      <rect x="47" y="18" width="8" height="28" rx="2" fill="#d29a56" />
-      <rect x="7" y="22" width="50" height="7" rx="2" fill="#c48545" />
-      <rect x="7" y="33" width="50" height="7" rx="2" fill="#c48545" />
-    `),
+    sprite: createPixelSpriteAsset({
+      width: 24,
+      height: 15,
+      pixels: [
+        "........................",
+        "....OLO.....OLO.....OLO.",
+        "....OLO.....OLO.....OLO.",
+        "...OLLO....OLLO....OLLO.",
+        ".OLLLLLLLLLLLLLLLLLLLLO.",
+        ".ODDDDDDDDDDDDDDDDDDDDO.",
+        ".OLLLLLLLLLLLLLLLLLLLLO.",
+        "...OLLO....OLLO....OLLO.",
+        "....OLO.....OLO.....OLO.",
+        "....OLO.....OLO.....OLO.",
+        "....OLO.....OLO.....OLO.",
+        "...OOOOOOOOOOOOOOOOOO...",
+        "........................",
+        "........................",
+        "........................",
+      ],
+    }),
     width: 96,
     height: 60,
     anchorX: 0.5,
@@ -46,30 +97,57 @@ const FARM_OBJECTS = [
   {
     id: "barn",
     label: "Barn",
-    sprite: createSpriteAsset(`
-      <ellipse cx="32" cy="55" rx="24" ry="5" fill="#27481f" opacity="0.26" stroke="none" />
-      <path d="M11 26 32 10 53 26 47 30 32 18 17 30Z" fill="#8a312a" />
-      <rect x="15" y="26" width="34" height="26" rx="3" fill="#d85b4d" />
-      <rect x="26" y="34" width="12" height="18" rx="2" fill="#7b4324" />
-      <path d="M32 34V52" />
-      <rect x="26" y="18" width="12" height="10" rx="2" fill="#f2e4a9" />
-      <path d="M32 18V28M26 23H38" />
-    `),
-    width: 92,
-    height: 92,
+    sprite: createPixelSpriteAsset({
+      width: 16,
+      height: 16,
+      pixels: [
+        "................",
+        ".......OO.......",
+        "......ORRO......",
+        ".....ORRRRO.....",
+        "....ORrrrrRO....",
+        "...ORrrrrrrRO...",
+        "..OOOORRRROOOO..",
+        "..ORrrrrrrrrRO..",
+        "..ORrrYYYYrrRO..",
+        "..ORrrYYYYrrRO..",
+        "..ORrrrrrrrrRO..",
+        "..ORROTTTTORRO..",
+        "..ORROtTTtORRO..",
+        "..ORROtTTtORRO..",
+        "...OOOOOOOOOO...",
+        "................",
+      ],
+    }),
+    width: 96,
+    height: 96,
     anchorX: 0.5,
     anchorY: 0.88,
   },
   {
     id: "hay-bale",
     label: "Hay Bale",
-    sprite: createSpriteAsset(`
-      <ellipse cx="32" cy="53" rx="22" ry="5" fill="#2c5c24" opacity="0.24" stroke="none" />
-      <rect x="17" y="16" width="30" height="15" rx="4" fill="#e6ba49" />
-      <rect x="11" y="28" width="42" height="18" rx="4" fill="#d8a93b" />
-      <path d="M21 16V31M43 16V31M24 22H40M18 34H46M18 40H46" />
-      <path d="M19 28V46M45 28V46" />
-    `),
+    sprite: createPixelSpriteAsset({
+      width: 18,
+      height: 15,
+      pixels: [
+        "..................",
+        "......OOOOOO......",
+        ".....OHHHHHHO.....",
+        "....OHhhYYhhHO....",
+        "....OHHHHHHHHO....",
+        "...OOOOOOOOOOOO...",
+        "..OHHHHHHHHHHHHO..",
+        "..OHhhHHYYHHhhHO..",
+        "..OHHHHHHHHHHHHO..",
+        "..OHhhHHYYHHhhHO..",
+        "..OHHHHHHHHHHHHO..",
+        "...OOOOOOOOOOOO...",
+        "..................",
+        "..................",
+        "..................",
+      ],
+    }),
     width: 72,
     height: 60,
     anchorX: 0.5,
@@ -78,39 +156,60 @@ const FARM_OBJECTS = [
   {
     id: "cow",
     label: "Cow",
-    sprite: createSpriteAsset(`
-      <ellipse cx="33" cy="53" rx="23" ry="5" fill="#27511f" opacity="0.24" stroke="none" />
-      <rect x="14" y="22" width="30" height="18" rx="8" fill="#fff9f0" />
-      <rect x="42" y="24" width="12" height="12" rx="4" fill="#fff9f0" />
-      <path d="M44 24 42 19M52 24 54 19" />
-      <circle cx="47" cy="29" r="1.1" fill="#2f241b" stroke="none" />
-      <path d="M16 41V49M24 41V49M34 41V49M42 40V49M14 24 10 20" />
-      <ellipse cx="47" cy="34" rx="5" ry="3.5" fill="#f2b7b1" />
-      <circle cx="45" cy="34" r="1" fill="#9b5f5d" stroke="none" />
-      <circle cx="49" cy="34" r="1" fill="#9b5f5d" stroke="none" />
-      <ellipse cx="24" cy="29" rx="6" ry="5" fill="#433128" />
-      <ellipse cx="34" cy="34" rx="4" ry="3" fill="#433128" />
-    `),
-    width: 88,
-    height: 68,
+    sprite: createPixelSpriteAsset({
+      width: 24,
+      height: 18,
+      pixels: [
+        "........................",
+        ".................OO.....",
+        "......OOOOOOOOOOOWWOO...",
+        "....OOWWWWWWWWWWWWWWOO..",
+        "...OWWWBBWBBWWWWWWWWWO..",
+        "..OWWWWWWWWWWWWWWWWWWOO.",
+        "..OWWBBWWWWBBWWWWWWWPWO.",
+        "..OWWWWWWWWWWWWWWWWWWO..",
+        "...OWWWWWWWWWWWWWWWOO...",
+        "....OWWOO....OOWWOO.....",
+        "....OWWOO....OOWWOO.....",
+        ".....OO......OO.O......",
+        "...................O....",
+        "..................O.....",
+        "........................",
+        "........................",
+        "........................",
+        "........................",
+      ],
+    }),
+    width: 96,
+    height: 72,
     anchorX: 0.5,
     anchorY: 0.78,
   },
   {
     id: "chicken",
     label: "Chicken",
-    sprite: createSpriteAsset(`
-      <ellipse cx="31" cy="53" rx="18" ry="4" fill="#2b5723" opacity="0.22" stroke="none" />
-      <path d="M17 32 12 28 14 38Z" fill="#7d5533" />
-      <ellipse cx="28" cy="34" rx="13" ry="11" fill="#fff5e6" />
-      <circle cx="39" cy="28" r="7" fill="#fff5e6" />
-      <path d="M42 28 49 30 42 33Z" fill="#e1a130" />
-      <path d="M35 22C36 17 39 15 42 16 40 18 40 20 41 23Z" fill="#d74d46" />
-      <path d="M23 43V50M31 43V50" />
-      <path d="M24 50H21M32 50H29" />
-      <circle cx="40" cy="27" r="1.1" fill="#2f241b" stroke="none" />
-      <path d="M24 33C27 31 31 31 34 34" />
-    `),
+    sprite: createPixelSpriteAsset({
+      width: 16,
+      height: 16,
+      pixels: [
+        "................",
+        "........AA......",
+        "......AAWWO.....",
+        "....OOWWWWWOO...",
+        "...OWWWWWWWWWO..",
+        "..OOWWWWWWWWYO..",
+        "...OWWWWWWWWO...",
+        "....OOBWWWO....",
+        "......OOO......",
+        ".....Y..Y......",
+        ".....Y..Y......",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+      ],
+    }),
     width: 64,
     height: 64,
     anchorX: 0.5,
@@ -119,20 +218,32 @@ const FARM_OBJECTS = [
   {
     id: "apple-tree",
     label: "Apple Tree",
-    sprite: createSpriteAsset(`
-      <ellipse cx="32" cy="56" rx="20" ry="5" fill="#254d1f" opacity="0.28" stroke="none" />
-      <path d="M28 36C28 29 30 23 32 18 34 23 36 29 36 36V50H28Z" fill="#8c5a32" />
-      <circle cx="24" cy="24" r="10" fill="#63a94f" />
-      <circle cx="35" cy="18" r="11" fill="#6fb95a" />
-      <circle cx="43" cy="28" r="10" fill="#5f9f4d" />
-      <circle cx="31" cy="30" r="12" fill="#72bc5d" />
-      <circle cx="22" cy="24" r="2.4" fill="#cb3d34" />
-      <circle cx="38" cy="20" r="2.4" fill="#cb3d34" />
-      <circle cx="40" cy="31" r="2.4" fill="#cb3d34" />
-      <circle cx="29" cy="28" r="2.4" fill="#cb3d34" />
-    `),
-    width: 92,
-    height: 96,
+    sprite: createPixelSpriteAsset({
+      width: 16,
+      height: 18,
+      pixels: [
+        "......OGGO......",
+        "....OGggggGO....",
+        "...OGggAAggGO...",
+        "..OGggggggggGO..",
+        "..OGgAggggAgGO..",
+        ".OGggggggggggGO.",
+        ".OGggAggggAggGO.",
+        "..OGggggggggGO..",
+        "...OGGggggGGO...",
+        ".....OOTTO......",
+        ".....OTttO......",
+        ".....OTttO......",
+        ".....OTttO......",
+        "....OOTttOO.....",
+        "....OOTTttOO....",
+        "................",
+        "................",
+        "................",
+      ],
+    }),
+    width: 96,
+    height: 108,
     anchorX: 0.5,
     anchorY: 0.9,
   },
