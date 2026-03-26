@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Farm Builder</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <header class="panel">
+        <h1>Farm Builder</h1>
+        <p>Select an object, then click the farm canvas to place it.</p>
+      </header>
+
+      <section class="panel toolbar" aria-label="Farm object picker">
+        <button class="object-button active" data-object="fence" type="button">
+          <img src="./assets/objects/fence.svg" alt="Fence sprite" />
+          <span>Fence</span>
+        </button>
+        <button class="object-button" data-object="barn" type="button">
+          <img src="./assets/objects/barn.svg" alt="Barn sprite" />
+          <span>Barn</span>
+        </button>
+        <button class="object-button" data-object="hay-bale" type="button">
+          <img src="./assets/objects/hay-bale.svg" alt="Hay bale sprite" />
+          <span>Hay Bale</span>
+        </button>
+        <button class="object-button" data-object="cow" type="button">
+          <img src="./assets/objects/cow.svg" alt="Cow sprite" />
+          <span>Cow</span>
+        </button>
+        <button class="object-button" data-object="chicken" type="button">
+          <img src="./assets/objects/chicken.svg" alt="Chicken sprite" />
+          <span>Chicken</span>
+        </button>
+        <button class="object-button" data-object="apple-tree" type="button">
+          <img src="./assets/objects/apple-tree.svg" alt="Apple tree sprite" />
+          <span>Apple Tree</span>
+        </button>
+      </section>
+
+      <section class="panel canvas-panel">
+        <canvas id="farm-canvas" width="1100" height="620" aria-label="Farm canvas"></canvas>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

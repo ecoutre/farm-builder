@@ -1,0 +1,94 @@
+:root {
+  --bg: #ebf8e8;
+  --panel: #ffffff;
+  --text: #2f3b2d;
+  --muted: #61705f;
+  --accent: #5ca552;
+  --accent-soft: #dff2da;
+  --stroke: #2d3d2a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", "Segoe UI", Roboto, sans-serif;
+  background: linear-gradient(180deg, #d8f0d4 0%, var(--bg) 35%);
+  color: var(--text);
+}
+
+.layout {
+  width: min(1200px, 100% - 2rem);
+  margin: 1rem auto 2rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.panel {
+  background: var(--panel);
+  border: 2px solid #cde3c7;
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  box-shadow: 0 8px 18px rgba(44, 83, 38, 0.08);
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+p {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.7rem;
+}
+
+.object-button {
+  display: grid;
+  justify-items: center;
+  gap: 0.3rem;
+  border: 2px solid #d4e7cf;
+  border-radius: 12px;
+  background: #f8fdf6;
+  padding: 0.6rem 0.3rem;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.object-button:hover {
+  border-color: #abd39f;
+}
+
+.object-button.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.object-button img {
+  width: 62px;
+  height: 62px;
+}
+
+.canvas-panel {
+  padding: 0.6rem;
+}
+
+canvas {
+  width: 100%;
+  max-width: 1100px;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  border: 2px solid #b8d8b0;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #bfe5ff 0%, #bfe5ff 28%, #80d26b 28%, #73c85e 100%);
+}
