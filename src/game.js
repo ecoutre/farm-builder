@@ -1,7 +1,6 @@
 const VIEW_ID = "game-view";
 const BACKGROUND_ID = "farm-background";
 const TOOLBAR_ID = "toolbar-buttons";
-const ACTIVE_OBJECT_LABEL_ID = "active-object-label";
 const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
 
@@ -194,14 +193,13 @@ function drawBackground(ctx, width, height) {
 
 function getUIRefs() {
   const toolbarButtons = document.getElementById(TOOLBAR_ID);
-  const activeObjectLabel = document.getElementById(ACTIVE_OBJECT_LABEL_ID);
   const placementLayer = document.getElementById(PLACEMENT_LAYER_ID);
 
-  if (!toolbarButtons || !activeObjectLabel || !placementLayer) {
+  if (!toolbarButtons || !placementLayer) {
     throw new Error("Toolbar or placement UI is missing.");
   }
 
-  return { toolbarButtons, activeObjectLabel, placementLayer };
+  return { toolbarButtons, placementLayer };
 }
 
 function getObjectById(objectId) {
@@ -209,8 +207,7 @@ function getObjectById(objectId) {
 }
 
 function updateActiveUI() {
-  const { toolbarButtons, activeObjectLabel } = getUIRefs();
-  const activeObject = getObjectById(state.activeObjectId);
+  const { toolbarButtons } = getUIRefs();
 
   Array.from(toolbarButtons.querySelectorAll(".farm-object-button")).forEach(
     (button) => {
@@ -219,10 +216,6 @@ function updateActiveUI() {
       button.setAttribute("aria-pressed", String(isActive));
     },
   );
-
-  activeObjectLabel.textContent = activeObject
-    ? `Active: ${activeObject.label}`
-    : "Active: None";
 }
 
 function setActiveObject(objectId) {
@@ -242,6 +235,7 @@ function renderToolbar() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "farm-object-button";
+    button.classList.add(`farm-object-button--${farmObject.id}`);
     button.dataset.objectId = farmObject.id;
     button.setAttribute("aria-label", `Select ${farmObject.label}`);
     button.innerHTML = `

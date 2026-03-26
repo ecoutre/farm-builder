@@ -73,37 +73,21 @@ body {
   z-index: 3;
   width: min(780px, calc(100% - 20px));
   transform: translateX(-50%);
-  padding: 10px;
-  border: 3px solid #20380f;
-  background: #a5cb67;
-  box-shadow: 6px 6px 0 #20380f;
+  padding: 12px;
+  border: 4px solid #1b3010;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      #9abf5a 0 6px,
+      #97ba57 6px 12px
+    );
+  box-shadow:
+    0 0 0 3px #cee593,
+    0 0 0 6px #39541f,
+    8px 8px 0 #1d3110;
   color: #13240d;
   font-family: "Courier New", monospace;
   image-rendering: pixelated;
-}
-
-.farm-toolbar__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.farm-toolbar__title {
-  margin: 0;
-  font-size: 0.85rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #16300b;
-}
-
-.farm-toolbar__active {
-  margin: 0;
-  font-size: 0.85rem;
-  color: #16300b;
-  font-weight: 700;
 }
 
 .farm-toolbar__buttons {
@@ -130,7 +114,7 @@ body {
 }
 
 .farm-object-button:hover {
-  background: #e4f8bf;
+  filter: brightness(1.05);
 }
 
 .farm-object-button:focus-visible {
@@ -139,7 +123,6 @@ body {
 }
 
 .farm-object-button.is-active {
-  background: #fef6a2;
   border-color: #6d3e14;
   box-shadow: 1px 1px 0 #1b2d10;
   transform: translate(2px, 2px);
@@ -149,7 +132,13 @@ body {
   width: 30px;
   height: 30px;
   border: 2px solid #1b2d10;
-  background: #f4ffe6;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.12) 0 3px,
+      rgba(255, 255, 255, 0) 3px 6px
+    ),
+    rgba(244, 255, 230, 0.95);
   display: grid;
   place-items: center;
   font-size: 1rem;
@@ -161,6 +150,74 @@ body {
   line-height: 1;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.farm-object-button--barn {
+  background:
+    repeating-linear-gradient(90deg, #e58f83 0 5px, #db7a70 5px 10px);
+}
+
+.farm-object-button--barn .farm-object-button__icon {
+  background-color: #ffd9d3;
+}
+
+.farm-object-button--coop {
+  background:
+    repeating-linear-gradient(45deg, #f4cf88 0 4px, #efc16a 4px 8px);
+}
+
+.farm-object-button--coop .farm-object-button__icon {
+  background-color: #fff2d4;
+}
+
+.farm-object-button--silo {
+  background:
+    repeating-linear-gradient(0deg, #bcc8d8 0 4px, #a7b6c9 4px 8px);
+}
+
+.farm-object-button--silo .farm-object-button__icon {
+  background-color: #e7edf4;
+}
+
+.farm-object-button--tree {
+  background:
+    repeating-linear-gradient(90deg, #7dbd74 0 5px, #68ab62 5px 10px);
+}
+
+.farm-object-button--tree .farm-object-button__icon {
+  background-color: #dff3dc;
+}
+
+.farm-object-button--crop {
+  background:
+    repeating-linear-gradient(45deg, #efe17a 0 4px, #e6d25d 4px 8px);
+}
+
+.farm-object-button--crop .farm-object-button__icon {
+  background-color: #fef8d0;
+}
+
+.farm-object-button--pond {
+  background:
+    repeating-linear-gradient(90deg, #8ccbf5 0 5px, #74b9e8 5px 10px);
+}
+
+.farm-object-button--pond .farm-object-button__icon {
+  background-color: #d8efff;
+}
+
+.farm-object-button--barn.is-active,
+.farm-object-button--coop.is-active,
+.farm-object-button--silo.is-active,
+.farm-object-button--tree.is-active,
+.farm-object-button--crop.is-active,
+.farm-object-button--pond.is-active {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 245, 180, 0.95) 0 32%,
+      rgba(255, 226, 120, 0.95) 32% 100%
+    );
 }
 
 @media (max-width: 700px) {
