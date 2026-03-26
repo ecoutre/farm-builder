@@ -1,6 +1,10 @@
 const VIEW_ID = "game-view";
 const BACKGROUND_ID = "farm-background";
-const TILE_SIZE = 56;
+const SOURCE_TILE_SIZE = 32;
+const TILE_SCALE = 3;
+const TILE_DRAW_SIZE = SOURCE_TILE_SIZE * TILE_SCALE;
+const GRASS_PALETTE = ["#5e9345", "#679c4b", "#70a852", "#7eb760", "#8bc96b"];
+let cachedGrassTiles = null;
 
 function hash2D(x, y) {
   const value = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123;
@@ -18,105 +22,80 @@ function getViewAndCanvas() {
   return { view, canvas };
 }
 
-function drawBaseField(ctx, width, height) {
-  ctx.fillStyle = "#84c960";
-  ctx.fillRect(0, 0, width, height);
+function createGrassTile(seedOffset) {
+  const tile = document.createElement("canvas");
+  tile.width = SOURCE_TILE_SIZE;
+  tile.height = SOURCE_TILE_SIZE;
 
-  const lightGradient = ctx.createLinearGradient(0, 0, width, height);
-  lightGradient.addColorStop(0, "rgba(255, 255, 220, 0.16)");
-  lightGradient.addColorStop(0.45, "rgba(255, 255, 255, 0.06)");
-  lightGradient.addColorStop(1, "rgba(30, 70, 30, 0.12)");
+  const tileCtx = tile.getContext("2d");
+  if (!tileCtx) {
+    throw new Error("Failed to create grass tile context.");
+  }
 
-  ctx.fillStyle = lightGradient;
-  ctx.fillRect(0, 0, width, height);
-}
+  tileCtx.imageSmoothingEnabled = false;
+  tileCtx.fillStyle = GRASS_PALETTE[1];
+  tileCtx.fillRect(0, 0, SOURCE_TILE_SIZE, SOURCE_TILE_SIZE);
 
-function drawGrassTiles(ctx, width, height) {
-  const cols = Math.ceil(width / TILE_SIZE);
-  const rows = Math.ceil(height / TILE_SIZE);
+  for (let y = 0; y < SOURCE_TILE_SIZE; y += 1) {
+    for (let x = 0; x < SOURCE_TILE_SIZE; x += 1) {
+      const cluster = hash2D(
+        Math.floor((x + seedOffset * 3) / 4),
+        Math.floor((y + seedOffset * 5) / 4),
+      );
+      const grain = hash2D(x + seedOffset * 17, y + seedOffset * 13);
+      let color = GRASS_PALETTE[1];
 
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
-      const x = col * TILE_SIZE;
-      const y = row * TILE_SIZE;
-      const tone = hash2D(col, row);
-
-      if (tone > 0.5) {
-        ctx.fillStyle = `rgba(255, 255, 255, ${0.03 + tone * 0.03})`;
-      } else {
-        ctx.fillStyle = `rgba(37, 95, 31, ${0.03 + (0.5 - tone) * 0.06})`;
+      if (cluster > 0.68 && grain > 0.46) {
+        color = GRASS_PALETTE[2];
+      } else if (cluster < 0.31 && grain > 0.52) {
+        color = GRASS_PALETTE[0];
+      } else if (grain > 0.94) {
+        color = GRASS_PALETTE[3];
       }
 
-      ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-      ctx.strokeStyle = "rgba(70, 110, 52, 0.08)";
-      ctx.strokeRect(x + 0.5, y + 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
+      tileCtx.fillStyle = color;
+      tileCtx.fillRect(x, y, 1, 1);
+
+      // Occasional brighter vertical pixels to suggest tiny grass blades.
+      if (hash2D(x + seedOffset * 23, y + seedOffset * 31) > 0.987 && y > 0) {
+        tileCtx.fillStyle = GRASS_PALETTE[4];
+        tileCtx.fillRect(x, y, 1, 1);
+        tileCtx.fillRect(x, y - 1, 1, 1);
+      }
     }
   }
+
+  return tile;
 }
 
-function drawGroundPatches(ctx, width, height) {
-  const patchCount = Math.max(8, Math.floor((width * height) / 55000));
-
-  for (let index = 0; index < patchCount; index += 1) {
-    const px = hash2D(index + 3, 17) * width;
-    const py = hash2D(index + 9, 41) * height;
-    const radius = 50 + hash2D(index + 27, 5) * 80;
-    const gradient = ctx.createRadialGradient(px, py, radius * 0.15, px, py, radius);
-    const tint = hash2D(index + 13, 29) > 0.5 ? "255,255,235" : "58,108,44";
-
-    gradient.addColorStop(0, `rgba(${tint}, 0.12)`);
-    gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(px - radius, py - radius, radius * 2, radius * 2);
+function getGrassTiles() {
+  if (!cachedGrassTiles) {
+    cachedGrassTiles = [0, 1, 2].map((seedOffset) => createGrassTile(seedOffset));
   }
-}
 
-function drawDirtEdge(ctx, width, height) {
-  const pathY = height * 0.79;
-  const lineWidth = Math.max(26, Math.min(width, height) * 0.06);
-
-  ctx.beginPath();
-  ctx.moveTo(-width * 0.08, pathY + height * 0.06);
-  ctx.quadraticCurveTo(width * 0.28, pathY - height * 0.08, width * 0.67, pathY);
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.lineWidth = lineWidth;
-  ctx.strokeStyle = "rgba(146, 113, 73, 0.14)";
-  ctx.stroke();
-
-  ctx.lineWidth = lineWidth * 0.55;
-  ctx.strokeStyle = "rgba(208, 175, 126, 0.08)";
-  ctx.stroke();
-}
-
-function drawGrassTufts(ctx, width, height) {
-  const tuftCount = Math.max(16, Math.floor((width * height) / 25000));
-  ctx.strokeStyle = "rgba(52, 120, 43, 0.22)";
-  ctx.lineWidth = 1.2;
-  ctx.lineCap = "round";
-
-  for (let index = 0; index < tuftCount; index += 1) {
-    const x = hash2D(index + 71, 19) * width;
-    const y = hash2D(index + 91, 37) * height;
-    const size = 5 + hash2D(index + 57, 11) * 5;
-
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x - size * 0.5, y - size);
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + size * 0.2, y - size * 1.1);
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + size * 0.65, y - size * 0.95);
-    ctx.stroke();
-  }
+  return cachedGrassTiles;
 }
 
 function drawBackground(ctx, width, height) {
-  drawBaseField(ctx, width, height);
-  drawGrassTiles(ctx, width, height);
-  drawGroundPatches(ctx, width, height);
-  drawDirtEdge(ctx, width, height);
-  drawGrassTufts(ctx, width, height);
+  const tiles = getGrassTiles();
+  const cols = Math.ceil(width / TILE_DRAW_SIZE);
+  const rows = Math.ceil(height / TILE_DRAW_SIZE);
+  ctx.imageSmoothingEnabled = false;
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const tileIndex = Math.floor(hash2D(col + 11, row + 19) * tiles.length);
+      const tile = tiles[tileIndex];
+
+      ctx.drawImage(
+        tile,
+        col * TILE_DRAW_SIZE,
+        row * TILE_DRAW_SIZE,
+        TILE_DRAW_SIZE,
+        TILE_DRAW_SIZE,
+      );
+    }
+  }
 }
 
 function resizeAndRender() {
