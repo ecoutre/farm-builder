@@ -13,8 +13,21 @@
         class="background-layer"
         aria-label="Farm ground background"
       ></canvas>
+      <section
+        id="placement-layer"
+        class="placement-layer"
+        aria-label="Placed farm objects"
+      ></section>
       <section class="game-layer">
         <h1>Farm Builder</h1>
+      </section>
+      <section id="farm-toolbar" class="farm-toolbar" aria-label="Farm object toolbar">
+        <div
+          id="toolbar-buttons"
+          class="farm-toolbar__buttons"
+          role="group"
+          aria-label="Farm objects"
+        ></div>
       </section>
     </main>
     <script type="module" src="./src/game.js"></script>

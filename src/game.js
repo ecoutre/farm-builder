@@ -1,5 +1,21 @@
 const VIEW_ID = "game-view";
 const BACKGROUND_ID = "farm-background";
+const TOOLBAR_ID = "toolbar-buttons";
+const PLACEMENT_LAYER_ID = "placement-layer";
+const PLACE_GRID_SIZE = 12;
+
+const FARM_OBJECTS = [
+  { id: "barn", label: "Barn", icon: "🏠" },
+  { id: "coop", label: "Coop", icon: "🐔" },
+  { id: "silo", label: "Silo", icon: "🛢️" },
+  { id: "tree", label: "Tree", icon: "🌳" },
+  { id: "crop", label: "Crops", icon: "🌾" },
+  { id: "pond", label: "Pond", icon: "💧" },
+];
+
+const state = {
+  activeObjectId: FARM_OBJECTS[0].id,
+};
 const SOURCE_TILE_SIZE = 32;
 const TILE_SCALE = 3;
 const TILE_DRAW_SIZE = SOURCE_TILE_SIZE * TILE_SCALE;
@@ -175,6 +191,105 @@ function drawBackground(ctx, width, height) {
   }
 }
 
+function getUIRefs() {
+  const toolbarButtons = document.getElementById(TOOLBAR_ID);
+  const placementLayer = document.getElementById(PLACEMENT_LAYER_ID);
+
+  if (!toolbarButtons || !placementLayer) {
+    throw new Error("Toolbar or placement UI is missing.");
+  }
+
+  return { toolbarButtons, placementLayer };
+}
+
+function getObjectById(objectId) {
+  return FARM_OBJECTS.find((farmObject) => farmObject.id === objectId);
+}
+
+function updateActiveUI() {
+  const { toolbarButtons } = getUIRefs();
+
+  Array.from(toolbarButtons.querySelectorAll(".farm-object-button")).forEach(
+    (button) => {
+      const isActive = button.dataset.objectId === state.activeObjectId;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    },
+  );
+}
+
+function setActiveObject(objectId) {
+  if (!getObjectById(objectId)) {
+    return;
+  }
+
+  state.activeObjectId = objectId;
+  updateActiveUI();
+}
+
+function renderToolbar() {
+  const { toolbarButtons } = getUIRefs();
+  toolbarButtons.innerHTML = "";
+
+  for (const farmObject of FARM_OBJECTS) {
+    const slot = document.createElement("div");
+    slot.className = "farm-toolbar__slot";
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "farm-object-button";
+    button.classList.add(`farm-object-button--${farmObject.id}`);
+    button.dataset.objectId = farmObject.id;
+    button.setAttribute("aria-label", `Select ${farmObject.label}`);
+    button.innerHTML = `
+      <span class="farm-object-button__icon" aria-hidden="true">
+        ${farmObject.icon}
+      </span>
+    `;
+    button.addEventListener("click", () => setActiveObject(farmObject.id));
+    slot.appendChild(button);
+    toolbarButtons.appendChild(slot);
+  }
+
+  updateActiveUI();
+}
+
+function placeObject(clientX, clientY) {
+  const activeObject = getObjectById(state.activeObjectId);
+  if (!activeObject) {
+    return;
+  }
+
+  const { view } = getViewAndCanvas();
+  const { placementLayer } = getUIRefs();
+  const bounds = view.getBoundingClientRect();
+
+  const objectEl = document.createElement("div");
+  objectEl.className = "placed-object";
+  objectEl.textContent = activeObject.icon;
+  objectEl.setAttribute("aria-label", `${activeObject.label} placed`);
+  const relativeX = clientX - bounds.left;
+  const relativeY = clientY - bounds.top;
+  const snappedX = Math.round(relativeX / PLACE_GRID_SIZE) * PLACE_GRID_SIZE;
+  const snappedY = Math.round(relativeY / PLACE_GRID_SIZE) * PLACE_GRID_SIZE;
+  objectEl.style.left = `${snappedX}px`;
+  objectEl.style.top = `${snappedY}px`;
+  placementLayer.appendChild(objectEl);
+}
+
+function setupPlacementInput() {
+  const { view } = getViewAndCanvas();
+  const toolbar = document.getElementById("farm-toolbar");
+
+  view.addEventListener("click", (event) => {
+    if (toolbar && event.target instanceof Element && toolbar.contains(event.target)) {
+      return;
+    }
+
+    placeObject(event.clientX, event.clientY);
+  });
+}
+
 function resizeAndRender() {
   const { view, canvas } = getViewAndCanvas();
   const bounds = view.getBoundingClientRect();
@@ -198,6 +313,8 @@ function resizeAndRender() {
 }
 
 function init() {
+  renderToolbar();
+  setupPlacementInput();
   resizeAndRender();
   window.addEventListener("resize", resizeAndRender);
 }
