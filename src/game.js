@@ -2,7 +2,6 @@ const VIEW_ID = "game-view";
 const BACKGROUND_ID = "farm-background";
 const TOOLBAR_ID = "toolbar-buttons";
 const PLACEMENT_LAYER_ID = "placement-layer";
-const PLACEMENT_STATUS_ID = "placement-status";
 const PLACE_GRID_SIZE = 12;
 const PLACED_OBJECT_SIZE = 40;
 
@@ -197,23 +196,16 @@ function drawBackground(ctx, width, height) {
 function getUIRefs() {
   const toolbarButtons = document.getElementById(TOOLBAR_ID);
   const placementLayer = document.getElementById(PLACEMENT_LAYER_ID);
-  const placementStatus = document.getElementById(PLACEMENT_STATUS_ID);
 
-  if (!toolbarButtons || !placementLayer || !placementStatus) {
+  if (!toolbarButtons || !placementLayer) {
     throw new Error("Toolbar or placement UI is missing.");
   }
 
-  return { toolbarButtons, placementLayer, placementStatus };
+  return { toolbarButtons, placementLayer };
 }
 
 function getObjectById(objectId) {
   return FARM_OBJECTS.find((farmObject) => farmObject.id === objectId);
-}
-
-function setPlacementStatus(message, tone = "info") {
-  const { placementStatus } = getUIRefs();
-  placementStatus.textContent = message;
-  placementStatus.dataset.tone = tone;
 }
 
 function updateActiveUI() {
@@ -236,7 +228,6 @@ function setActiveObject(objectId) {
 
   state.activeObjectId = objectId;
   updateActiveUI();
-  setPlacementStatus(`Selected ${activeObject.label}. Click the field to place it.`, "info");
 }
 
 function renderToolbar() {
@@ -330,12 +321,10 @@ function placeObject(clientX, clientY) {
 
   const placement = getSnappedPlacement(clientX, clientY);
   if (!placement.isInsideBounds) {
-    setPlacementStatus("That spot is outside the buildable field.", "error");
     return false;
   }
 
   if (overlapsExistingPlacement(placement.x, placement.y)) {
-    setPlacementStatus("That spot is already occupied.", "error");
     return false;
   }
 
@@ -349,7 +338,6 @@ function placeObject(clientX, clientY) {
 
   state.placements.push(placedObject);
   renderPlacedObject(placedObject);
-  setPlacementStatus(`Placed ${activeObject.label}. Click to place another.`, "success");
   return true;
 }
 
