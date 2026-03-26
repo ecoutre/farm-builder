@@ -28,9 +28,30 @@ body {
   z-index: 0;
 }
 
+.placement-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.placed-object {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  font-size: 1.35rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(27, 58, 31, 0.35);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
+}
+
 .game-layer {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
@@ -42,4 +63,102 @@ body {
   margin: 0;
   font-size: 1rem;
   color: rgba(255, 255, 255, 0.9);
+}
+
+.farm-toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  z-index: 3;
+  width: min(780px, calc(100% - 20px));
+  transform: translateX(-50%);
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(17, 24, 39, 0.78);
+  backdrop-filter: blur(4px);
+  color: #eff7e9;
+}
+
+.farm-toolbar__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.farm-toolbar__title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgba(231, 255, 216, 0.95);
+}
+
+.farm-toolbar__active {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.farm-toolbar__buttons {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.farm-object-button {
+  appearance: none;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f7fff2;
+  cursor: pointer;
+  padding: 8px 6px;
+  font: inherit;
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  transition: background-color 100ms ease, border-color 100ms ease,
+    transform 100ms ease;
+}
+
+.farm-object-button:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.farm-object-button:focus-visible {
+  outline: 2px solid #d5ff92;
+  outline-offset: 1px;
+}
+
+.farm-object-button.is-active {
+  background: rgba(173, 255, 84, 0.24);
+  border-color: rgba(213, 255, 146, 0.95);
+  transform: translateY(-1px);
+}
+
+.farm-object-button__icon {
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.farm-object-button__label {
+  font-size: 0.72rem;
+  line-height: 1.1;
+}
+
+@media (max-width: 700px) {
+  .farm-toolbar {
+    width: calc(100% - 12px);
+    bottom: 8px;
+    padding: 10px 8px;
+  }
+
+  .farm-toolbar__buttons {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
