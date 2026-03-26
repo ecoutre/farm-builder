@@ -26,6 +26,7 @@ body {
   position: absolute;
   inset: 0;
   z-index: 0;
+  image-rendering: pixelated;
 }
 
 .placement-layer {
@@ -37,16 +38,16 @@ body {
 
 .placed-object {
   position: absolute;
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
   transform: translate(-50%, -50%);
-  font-size: 1.35rem;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid rgba(27, 58, 31, 0.35);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
+  font-size: 1.2rem;
+  border: 2px solid #1c1c1c;
+  background: #eaf5e4;
+  box-shadow: 4px 4px 0 #2e2e2e;
+  image-rendering: pixelated;
 }
 
 .game-layer {
@@ -72,12 +73,13 @@ body {
   z-index: 3;
   width: min(780px, calc(100% - 20px));
   transform: translateX(-50%);
-  padding: 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  background: rgba(17, 24, 39, 0.78);
-  backdrop-filter: blur(4px);
-  color: #eff7e9;
+  padding: 10px;
+  border: 3px solid #20380f;
+  background: #a5cb67;
+  box-shadow: 6px 6px 0 #20380f;
+  color: #13240d;
+  font-family: "Courier New", monospace;
+  image-rendering: pixelated;
 }
 
 .farm-toolbar__header {
@@ -91,64 +93,74 @@ body {
 .farm-toolbar__title {
   margin: 0;
   font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: rgba(231, 255, 216, 0.95);
+  color: #16300b;
 }
 
 .farm-toolbar__active {
   margin: 0;
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.92);
+  color: #16300b;
+  font-weight: 700;
 }
 
 .farm-toolbar__buttons {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .farm-object-button {
   appearance: none;
   width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.1);
-  color: #f7fff2;
+  border: 2px solid #1b2d10;
+  background: #d6efaf;
+  color: #1b2d10;
   cursor: pointer;
-  padding: 8px 6px;
+  padding: 7px 5px 6px;
   font: inherit;
   display: grid;
   place-items: center;
-  gap: 4px;
-  transition: background-color 100ms ease, border-color 100ms ease,
-    transform 100ms ease;
+  gap: 3px;
+  box-shadow: 3px 3px 0 #1b2d10;
+  transition: background-color 100ms ease, transform 80ms ease, box-shadow 80ms ease;
+  image-rendering: pixelated;
 }
 
 .farm-object-button:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: #e4f8bf;
 }
 
 .farm-object-button:focus-visible {
-  outline: 2px solid #d5ff92;
-  outline-offset: 1px;
+  outline: 2px dashed #173507;
+  outline-offset: 2px;
 }
 
 .farm-object-button.is-active {
-  background: rgba(173, 255, 84, 0.24);
-  border-color: rgba(213, 255, 146, 0.95);
-  transform: translateY(-1px);
+  background: #fef6a2;
+  border-color: #6d3e14;
+  box-shadow: 1px 1px 0 #1b2d10;
+  transform: translate(2px, 2px);
 }
 
 .farm-object-button__icon {
-  font-size: 1.3rem;
+  width: 30px;
+  height: 30px;
+  border: 2px solid #1b2d10;
+  background: #f4ffe6;
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
   line-height: 1;
 }
 
 .farm-object-button__label {
-  font-size: 0.72rem;
-  line-height: 1.1;
+  font-size: 0.66rem;
+  line-height: 1;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 @media (max-width: 700px) {
