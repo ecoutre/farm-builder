@@ -5,6 +5,49 @@ const TILE_SCALE = 3;
 const TILE_DRAW_SIZE = SOURCE_TILE_SIZE * TILE_SCALE;
 const GRASS_PALETTE = ["#5e9345", "#679c4b", "#70a852", "#7eb760", "#8bc96b"];
 let cachedGrassTiles = null;
+const BLADE_STAMPS = [
+  {
+    blade: [
+      [0, 2, 2],
+      [1, 1, 3],
+      [2, 0, 4],
+    ],
+    shadow: [
+      [0, 3, 0],
+      [1, 3, 0],
+    ],
+  },
+  {
+    blade: [
+      [0, 0, 4],
+      [1, 1, 3],
+      [2, 2, 2],
+    ],
+    shadow: [
+      [1, 3, 0],
+      [2, 3, 0],
+    ],
+  },
+  {
+    blade: [
+      [0, 1, 2],
+      [1, 0, 3],
+    ],
+    shadow: [[0, 2, 0]],
+  },
+  {
+    blade: [
+      [0, 2, 2],
+      [1, 2, 3],
+      [2, 1, 3],
+      [3, 0, 4],
+    ],
+    shadow: [
+      [1, 3, 0],
+      [2, 3, 0],
+    ],
+  },
+];
 
 function hash2D(x, y) {
   const value = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123;
@@ -20,6 +63,23 @@ function getViewAndCanvas() {
   }
 
   return { view, canvas };
+}
+
+function drawWrappedPixel(tileCtx, x, y, colorIndex) {
+  const wrappedX = (x + SOURCE_TILE_SIZE) % SOURCE_TILE_SIZE;
+  const wrappedY = (y + SOURCE_TILE_SIZE) % SOURCE_TILE_SIZE;
+  tileCtx.fillStyle = GRASS_PALETTE[colorIndex];
+  tileCtx.fillRect(wrappedX, wrappedY, 1, 1);
+}
+
+function drawBladeStamp(tileCtx, originX, originY, stamp) {
+  for (const [dx, dy, colorIndex] of stamp.blade) {
+    drawWrappedPixel(tileCtx, originX + dx, originY + dy, colorIndex);
+  }
+
+  for (const [dx, dy, colorIndex] of stamp.shadow) {
+    drawWrappedPixel(tileCtx, originX + dx, originY + dy, colorIndex);
+  }
 }
 
 function createGrassTile(seedOffset) {
@@ -38,29 +98,46 @@ function createGrassTile(seedOffset) {
 
   for (let y = 0; y < SOURCE_TILE_SIZE; y += 1) {
     for (let x = 0; x < SOURCE_TILE_SIZE; x += 1) {
-      const cluster = hash2D(
-        Math.floor((x + seedOffset * 3) / 4),
-        Math.floor((y + seedOffset * 5) / 4),
+      const macroCluster = hash2D(
+        Math.floor((x + seedOffset * 2) / 3),
+        Math.floor((y + seedOffset * 4) / 3),
       );
-      const grain = hash2D(x + seedOffset * 17, y + seedOffset * 13);
-      let color = GRASS_PALETTE[1];
+      let colorIndex = 1;
 
-      if (cluster > 0.68 && grain > 0.46) {
-        color = GRASS_PALETTE[2];
-      } else if (cluster < 0.31 && grain > 0.52) {
-        color = GRASS_PALETTE[0];
-      } else if (grain > 0.94) {
-        color = GRASS_PALETTE[3];
+      if (macroCluster > 0.72) {
+        colorIndex = 2;
+      } else if (macroCluster < 0.24) {
+        colorIndex = 0;
       }
 
-      tileCtx.fillStyle = color;
-      tileCtx.fillRect(x, y, 1, 1);
+      if (hash2D(x + seedOffset * 19, y + seedOffset * 23) > 0.988) {
+        colorIndex = 3;
+      }
 
-      // Occasional brighter vertical pixels to suggest tiny grass blades.
-      if (hash2D(x + seedOffset * 23, y + seedOffset * 31) > 0.987 && y > 0) {
-        tileCtx.fillStyle = GRASS_PALETTE[4];
-        tileCtx.fillRect(x, y, 1, 1);
-        tileCtx.fillRect(x, y - 1, 1, 1);
+      tileCtx.fillStyle = GRASS_PALETTE[colorIndex];
+      tileCtx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  for (let y = 0; y < SOURCE_TILE_SIZE; y += 2) {
+    for (let x = 0; x < SOURCE_TILE_SIZE; x += 2) {
+      const placement = hash2D(
+        Math.floor((x + seedOffset * 11) / 2),
+        Math.floor((y + seedOffset * 7) / 2),
+      );
+
+      if (placement < 0.9) {
+        continue;
+      }
+
+      const stampIndex = Math.floor(
+        hash2D(x + seedOffset * 29, y + seedOffset * 31) * BLADE_STAMPS.length,
+      );
+      const stamp = BLADE_STAMPS[stampIndex];
+      drawBladeStamp(tileCtx, x, y, stamp);
+
+      if (hash2D(x + seedOffset * 43, y + seedOffset * 47) > 0.993) {
+        drawWrappedPixel(tileCtx, x + 1, y, 4);
       }
     }
   }
@@ -100,7 +177,9 @@ function drawBackground(ctx, width, height) {
 
 function resizeAndRender() {
   const { view, canvas } = getViewAndCanvas();
-  const { width, height } = view.getBoundingClientRect();
+  const bounds = view.getBoundingClientRect();
+  const width = Math.max(1, Math.round(bounds.width));
+  const height = Math.max(1, Math.round(bounds.height));
   const pixelRatio = window.devicePixelRatio || 1;
 
   canvas.width = Math.round(width * pixelRatio);
