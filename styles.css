@@ -1,0 +1,76 @@
+.app {
+  max-width: 960px;
+  margin: 24px auto;
+  padding: 0 16px;
+  font-family: Arial, sans-serif;
+}
+
+h1 {
+  margin: 0 0 16px;
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.toolbar-label {
+  font-weight: 600;
+}
+
+.toolbar-button {
+  border: 1px solid #7d8b77;
+  background: #f5f8f2;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.toolbar-button.is-selected {
+  background: #d7ebc8;
+  border-color: #4f7f33;
+}
+
+.status {
+  min-height: 1.2em;
+  margin: 0 0 12px;
+  color: #2f3b2d;
+}
+
+.farm {
+  width: 800px;
+  height: 500px;
+  border: 2px solid #6a8f4e;
+  border-radius: 8px;
+  background: #dceecd;
+  position: relative;
+  overflow: hidden;
+}
+
+.placed-object {
+  position: absolute;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  color: #1f2a1d;
+  font-size: 12px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.placed-object--tree {
+  background: #7bc16e;
+}
+
+.placed-object--barn {
+  background: #d88466;
+}
+
+.placed-object--plot {
+  background: #c3a76e;
+}
