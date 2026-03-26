@@ -3,6 +3,8 @@ const BACKGROUND_ID = "farm-background";
 const TOOLBAR_ID = "toolbar-buttons";
 const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
+const AMBIENT_LOOP_DURATION = 12;
+const AMBIENT_MASTER_VOLUME = 0.16;
 
 const FARM_OBJECTS = [
   { id: "barn", label: "Barn", icon: "🏠" },
@@ -15,6 +17,9 @@ const FARM_OBJECTS = [
 
 const state = {
   activeObjectId: FARM_OBJECTS[0].id,
+  ambientAudioStarted: false,
+  ambientAudioContext: null,
+  ambientMasterGain: null,
 };
 const SOURCE_TILE_SIZE = 32;
 const TILE_SCALE = 3;
@@ -68,6 +73,237 @@ const BLADE_STAMPS = [
 function hash2D(x, y) {
   const value = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123;
   return value - Math.floor(value);
+}
+
+function clampSample(value) {
+  return Math.max(-1, Math.min(1, value));
+}
+
+function getWrappedDistance(position, center, loopDuration) {
+  let delta = position - center;
+
+  if (delta > loopDuration / 2) {
+    delta -= loopDuration;
+  } else if (delta < -loopDuration / 2) {
+    delta += loopDuration;
+  }
+
+  return delta;
+}
+
+function addLoopedEvent(buffer, loopDuration, sampleRate, centerTime, radius, renderSample) {
+  const startIndex = Math.floor((centerTime - radius) * sampleRate);
+  const endIndex = Math.ceil((centerTime + radius) * sampleRate);
+  const totalSamples = buffer.length;
+
+  for (let index = startIndex; index <= endIndex; index += 1) {
+    const wrappedIndex = ((index % totalSamples) + totalSamples) % totalSamples;
+    const position = wrappedIndex / sampleRate;
+    const delta = getWrappedDistance(position, centerTime, loopDuration);
+
+    if (Math.abs(delta) > radius) {
+      continue;
+    }
+
+    buffer[wrappedIndex] += renderSample(delta, position);
+  }
+}
+
+function createLoopingNoise(length, random) {
+  const noise = new Float32Array(length);
+
+  for (let index = 0; index < length; index += 1) {
+    noise[index] = random() * 2 - 1;
+  }
+
+  return noise;
+}
+
+function sampleLoopingNoise(noise, samplePosition) {
+  const length = noise.length;
+  const wrappedPosition = ((samplePosition % length) + length) % length;
+  const baseIndex = Math.floor(wrappedPosition);
+  const nextIndex = (baseIndex + 1) % length;
+  const fraction = wrappedPosition - baseIndex;
+
+  return noise[baseIndex] * (1 - fraction) + noise[nextIndex] * fraction;
+}
+
+function createAmbientLoopBuffer(audioContext) {
+  const sampleRate = audioContext.sampleRate;
+  const frameCount = Math.floor(sampleRate * AMBIENT_LOOP_DURATION);
+  const buffer = audioContext.createBuffer(2, frameCount, sampleRate);
+  const left = buffer.getChannelData(0);
+  const right = buffer.getChannelData(1);
+  let randomSeed = 0.421;
+
+  const random = () => {
+    randomSeed = (randomSeed * 16807) % 2147483647;
+    return (randomSeed - 1) / 2147483646;
+  };
+
+  const windNoise = createLoopingNoise(4096, random);
+
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const time = frame / sampleRate;
+    const loopPhase = (frame / frameCount) * Math.PI * 2;
+    const breezeBody =
+      Math.sin(loopPhase - 0.6) * 0.48 +
+      Math.sin(loopPhase * 2 + 0.8) * 0.26 +
+      Math.sin(loopPhase * 3 - 1.4) * 0.18;
+    const gustEnvelope =
+      0.23 +
+      0.07 * Math.sin(loopPhase * 2 - 0.2) +
+      0.04 * Math.sin(loopPhase * 5 + 1.3) +
+      0.03 * Math.sin(loopPhase * 7 - 0.8);
+    const hissLeft =
+      Math.sin(loopPhase * 17 + 0.3) * 0.026 +
+      Math.sin(loopPhase * 29 - 1.1) * 0.02 +
+      Math.sin(loopPhase * 43 + 0.9) * 0.014;
+    const hissRight =
+      Math.sin(loopPhase * 19 - 0.5) * 0.024 +
+      Math.sin(loopPhase * 31 + 0.7) * 0.018 +
+      Math.sin(loopPhase * 47 - 1.4) * 0.015;
+
+    left[frame] = breezeBody * gustEnvelope + hissLeft;
+    right[frame] = breezeBody * (gustEnvelope * 0.97) + hissRight;
+  }
+
+  const mooEvents = [1.8, 7.6];
+  for (const centerTime of mooEvents) {
+    addLoopedEvent(left, AMBIENT_LOOP_DURATION, sampleRate, centerTime, 0.9, (delta) => {
+      const progress = (delta + 0.9) / 1.8;
+      const envelope = Math.sin(progress * Math.PI) ** 2;
+      const frequency =
+        166 +
+        8 * Math.sin(progress * Math.PI * 2) +
+        4 * Math.sin(progress * Math.PI * 5);
+      const phase = delta * Math.PI * 2 * frequency;
+      return envelope * (Math.sin(phase) * 0.09 + Math.sin(phase * 0.5 + 0.5) * 0.05);
+    });
+
+    addLoopedEvent(right, AMBIENT_LOOP_DURATION, sampleRate, centerTime + 0.08, 0.9, (delta) => {
+      const progress = (delta + 0.9) / 1.8;
+      const envelope = Math.sin(progress * Math.PI) ** 2;
+      const frequency =
+        162 +
+        10 * Math.sin(progress * Math.PI * 2 + 0.3) +
+        4 * Math.sin(progress * Math.PI * 4.5);
+      const phase = delta * Math.PI * 2 * frequency;
+      return envelope * (Math.sin(phase) * 0.085 + Math.sin(phase * 0.5 + 0.2) * 0.05);
+    });
+  }
+
+  const cluckEvents = [
+    { time: 0.95, pan: -0.22, pitch: 690 },
+    { time: 2.9, pan: 0.18, pitch: 760 },
+    { time: 4.4, pan: -0.1, pitch: 720 },
+    { time: 6.15, pan: 0.26, pitch: 810 },
+    { time: 8.95, pan: -0.28, pitch: 740 },
+    { time: 10.7, pan: 0.12, pitch: 780 },
+  ];
+
+  for (const { time, pan, pitch } of cluckEvents) {
+    for (const channel of [
+      { buffer: left, gain: 1 - Math.max(0, pan) },
+      { buffer: right, gain: 1 + Math.min(0, pan) },
+    ]) {
+      addLoopedEvent(
+        channel.buffer,
+        AMBIENT_LOOP_DURATION,
+        sampleRate,
+        time,
+        0.2,
+        (delta, position) => {
+          const progress = (delta + 0.2) / 0.4;
+          const envelope = Math.sin(progress * Math.PI) ** 3;
+          const chirpFrequency = pitch + 120 * Math.sin(progress * Math.PI);
+          const chirpPhase = delta * Math.PI * 2 * chirpFrequency;
+          const chatter =
+            sampleLoopingNoise(windNoise, (position * 820 + pitch) % windNoise.length) * 0.03;
+
+          return (
+            channel.gain *
+            envelope *
+            (Math.sin(chirpPhase) * 0.05 + Math.sin(chirpPhase * 1.95) * 0.025 + chatter)
+          );
+        },
+      );
+    }
+  }
+
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    left[frame] = clampSample(left[frame] * 0.62);
+    right[frame] = clampSample(right[frame] * 0.62);
+  }
+
+  return buffer;
+}
+
+function startAmbientAudio() {
+  if (state.ambientAudioStarted) {
+    if (state.ambientAudioContext?.state === "suspended") {
+      state.ambientAudioContext.resume().catch(() => {});
+    }
+
+    return;
+  }
+
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) {
+    return;
+  }
+
+  try {
+    const audioContext = new AudioContextClass();
+    const source = audioContext.createBufferSource();
+    const masterGain = audioContext.createGain();
+
+    source.buffer = createAmbientLoopBuffer(audioContext);
+    source.loop = true;
+    masterGain.gain.setValueAtTime(0, audioContext.currentTime);
+    masterGain.gain.linearRampToValueAtTime(
+      AMBIENT_MASTER_VOLUME,
+      audioContext.currentTime + 1.5,
+    );
+
+    source.connect(masterGain);
+    masterGain.connect(audioContext.destination);
+    source.start();
+
+    state.ambientAudioContext = audioContext;
+    state.ambientMasterGain = masterGain;
+    state.ambientAudioStarted = true;
+
+    if (audioContext.state === "suspended") {
+      audioContext.resume().catch(() => {});
+    }
+  } catch (error) {
+    console.error("Unable to start ambient audio.", error);
+  }
+}
+
+function setupAmbientAudio() {
+  const { view } = getViewAndCanvas();
+
+  const activateAmbientAudio = () => {
+    startAmbientAudio();
+  };
+
+  view.addEventListener("pointerdown", activateAmbientAudio, { passive: true });
+  window.addEventListener("keydown", activateAmbientAudio, { passive: true });
+  document.addEventListener("visibilitychange", () => {
+    if (!state.ambientAudioContext) {
+      return;
+    }
+
+    if (document.hidden) {
+      state.ambientAudioContext.suspend().catch(() => {});
+      return;
+    }
+
+    state.ambientAudioContext.resume().catch(() => {});
+  });
 }
 
 function getViewAndCanvas() {
@@ -314,6 +550,7 @@ function resizeAndRender() {
 
 function init() {
   renderToolbar();
+  setupAmbientAudio();
   setupPlacementInput();
   resizeAndRender();
   window.addEventListener("resize", resizeAndRender);
