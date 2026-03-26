@@ -3,6 +3,7 @@ const BACKGROUND_ID = "farm-background";
 const TOOLBAR_ID = "toolbar-buttons";
 const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
+const PLACED_OBJECT_SIZE = 40;
 
 const FARM_OBJECTS = [
   { id: "barn", label: "Barn", icon: "🏠" },
@@ -15,6 +16,7 @@ const FARM_OBJECTS = [
 
 const state = {
   activeObjectId: FARM_OBJECTS[0].id,
+  placements: [],
 };
 const SOURCE_TILE_SIZE = 32;
 const TILE_SCALE = 3;
@@ -219,7 +221,8 @@ function updateActiveUI() {
 }
 
 function setActiveObject(objectId) {
-  if (!getObjectById(objectId)) {
+  const activeObject = getObjectById(objectId);
+  if (!activeObject) {
     return;
   }
 
@@ -254,38 +257,94 @@ function renderToolbar() {
   updateActiveUI();
 }
 
-function placeObject(clientX, clientY) {
-  const activeObject = getObjectById(state.activeObjectId);
-  if (!activeObject) {
-    return;
-  }
-
-  const { view } = getViewAndCanvas();
+function renderPlacedObject(placement) {
   const { placementLayer } = getUIRefs();
-  const bounds = view.getBoundingClientRect();
-
   const objectEl = document.createElement("div");
   objectEl.className = "placed-object";
-  objectEl.textContent = activeObject.icon;
-  objectEl.setAttribute("aria-label", `${activeObject.label} placed`);
+  objectEl.textContent = placement.icon;
+  objectEl.setAttribute("aria-label", `${placement.label} placed`);
+  objectEl.style.left = `${placement.x}px`;
+  objectEl.style.top = `${placement.y}px`;
+  placementLayer.appendChild(objectEl);
+}
+
+function getPlacementFootprint(centerX, centerY) {
+  const halfSize = PLACED_OBJECT_SIZE / 2;
+
+  return {
+    left: centerX - halfSize,
+    right: centerX + halfSize,
+    top: centerY - halfSize,
+    bottom: centerY + halfSize,
+  };
+}
+
+function overlapsExistingPlacement(centerX, centerY) {
+  const nextFootprint = getPlacementFootprint(centerX, centerY);
+
+  return state.placements.some((placement) => {
+    const existingFootprint = getPlacementFootprint(placement.x, placement.y);
+    return !(
+      nextFootprint.right <= existingFootprint.left ||
+      nextFootprint.left >= existingFootprint.right ||
+      nextFootprint.bottom <= existingFootprint.top ||
+      nextFootprint.top >= existingFootprint.bottom
+    );
+  });
+}
+
+function getSnappedPlacement(clientX, clientY) {
+  const { view } = getViewAndCanvas();
+  const bounds = view.getBoundingClientRect();
   const relativeX = clientX - bounds.left;
   const relativeY = clientY - bounds.top;
   const snappedX = Math.round(relativeX / PLACE_GRID_SIZE) * PLACE_GRID_SIZE;
   const snappedY = Math.round(relativeY / PLACE_GRID_SIZE) * PLACE_GRID_SIZE;
-  objectEl.style.left = `${snappedX}px`;
-  objectEl.style.top = `${snappedY}px`;
-  placementLayer.appendChild(objectEl);
+  const halfSize = PLACED_OBJECT_SIZE / 2;
+
+  return {
+    x: snappedX,
+    y: snappedY,
+    isInsideBounds:
+      snappedX >= halfSize &&
+      snappedX <= bounds.width - halfSize &&
+      snappedY >= halfSize &&
+      snappedY <= bounds.height - halfSize,
+  };
+}
+
+function placeObject(clientX, clientY) {
+  const activeObject = getObjectById(state.activeObjectId);
+  if (!activeObject) {
+    return false;
+  }
+
+  const placement = getSnappedPlacement(clientX, clientY);
+  if (!placement.isInsideBounds) {
+    return false;
+  }
+
+  if (overlapsExistingPlacement(placement.x, placement.y)) {
+    return false;
+  }
+
+  const placedObject = {
+    id: activeObject.id,
+    label: activeObject.label,
+    icon: activeObject.icon,
+    x: placement.x,
+    y: placement.y,
+  };
+
+  state.placements.push(placedObject);
+  renderPlacedObject(placedObject);
+  return true;
 }
 
 function setupPlacementInput() {
-  const { view } = getViewAndCanvas();
-  const toolbar = document.getElementById("farm-toolbar");
+  const { canvas } = getViewAndCanvas();
 
-  view.addEventListener("click", (event) => {
-    if (toolbar && event.target instanceof Element && toolbar.contains(event.target)) {
-      return;
-    }
-
+  canvas.addEventListener("click", (event) => {
     placeObject(event.clientX, event.clientY);
   });
 }
@@ -314,6 +373,7 @@ function resizeAndRender() {
 
 function init() {
   renderToolbar();
+  setActiveObject(state.activeObjectId);
   setupPlacementInput();
   resizeAndRender();
   window.addEventListener("resize", resizeAndRender);
