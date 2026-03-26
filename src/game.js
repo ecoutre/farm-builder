@@ -4,9 +4,57 @@ const TOOLBAR_ID = "toolbar-buttons";
 const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
 const PLACED_OBJECT_SIZE = 40;
-const AMBIENT_LOOP_DURATION = 18;
 const AMBIENT_MASTER_VOLUME = 0.14;
 const AMBIENT_FADE_SECONDS = 1.25;
+const AMBIENT_MIN_GAIN = 0.0001;
+const WIND_SCHEDULE_AHEAD_SECONDS = 10;
+const DEFAULT_WIND_CROSSFADE_SECONDS = 1.25;
+const AUDIO_ASSET_ROOT = new URL("../assets/audio/", import.meta.url);
+const AUDIO_ASSET_FILES = {
+  wind: ["farm-wind-whistling-loop.ogg"],
+  chickens: ["farm-chickens-clucking-01.ogg", "farm-chickens-clucking-02.ogg"],
+  cows: ["farm-cows-mooing-01.ogg", "farm-cows-mooing-02.ogg"],
+  rooster: ["farm-rooster-crow-01.ogg"],
+  pigs: ["farm-pigs-oinking-01.ogg", "farm-pigs-oinking-02.ogg"],
+};
+const AMBIENT_ONE_SHOT_GROUPS = {
+  chickens: {
+    volume: 0.22,
+    minDelay: 4,
+    maxDelay: 8,
+    minPan: -0.45,
+    maxPan: 0.35,
+    minPlaybackRate: 0.96,
+    maxPlaybackRate: 1.05,
+  },
+  cows: {
+    volume: 0.26,
+    minDelay: 11,
+    maxDelay: 18,
+    minPan: -0.5,
+    maxPan: 0.45,
+    minPlaybackRate: 0.97,
+    maxPlaybackRate: 1.02,
+  },
+  rooster: {
+    volume: 0.18,
+    minDelay: 19,
+    maxDelay: 30,
+    minPan: -0.2,
+    maxPan: 0.2,
+    minPlaybackRate: 0.99,
+    maxPlaybackRate: 1.01,
+  },
+  pigs: {
+    volume: 0.18,
+    minDelay: 10,
+    maxDelay: 17,
+    minPan: -0.4,
+    maxPan: 0.4,
+    minPlaybackRate: 0.96,
+    maxPlaybackRate: 1.04,
+  },
+};
 
 const FARM_OBJECTS = [
   { id: "barn", label: "Barn", icon: "🏠" },
@@ -23,8 +71,12 @@ const state = {
   ambientAudioStarted: false,
   ambientAudioContext: null,
   ambientMasterGain: null,
-  ambientSource: null,
+  ambientBuffers: null,
+  ambientLoadPromise: null,
   ambientSuspendTimeoutId: null,
+  ambientWindSchedulerTimeoutId: null,
+  ambientWindScheduledUntil: 0,
+  ambientOneShotTimeoutIds: {},
 };
 const SOURCE_TILE_SIZE = 32;
 const TILE_SCALE = 3;
@@ -80,227 +132,96 @@ function hash2D(x, y) {
   return value - Math.floor(value);
 }
 
-function clampSample(value) {
-  return Math.max(-1, Math.min(1, value));
+function randomBetween(min, max) {
+  return min + Math.random() * (max - min);
 }
 
-function getWrappedDistance(position, center, loopDuration) {
-  let delta = position - center;
-
-  if (delta > loopDuration / 2) {
-    delta -= loopDuration;
-  } else if (delta < -loopDuration / 2) {
-    delta += loopDuration;
-  }
-
-  return delta;
+function getAudioAssetUrl(fileName) {
+  return new URL(fileName, AUDIO_ASSET_ROOT).toString();
 }
 
-function getStereoPanGains(pan) {
-  const clampedPan = Math.max(-1, Math.min(1, pan));
-  const angle = ((clampedPan + 1) * Math.PI) / 4;
+function getRandomArrayItem(items) {
+  if (!items || items.length === 0) {
+    return null;
+  }
 
-  return {
-    left: Math.cos(angle),
-    right: Math.sin(angle),
-  };
+  return items[Math.floor(Math.random() * items.length)];
 }
 
-function addLoopedEvent(buffer, loopDuration, sampleRate, centerTime, radius, renderSample) {
-  const startIndex = Math.floor((centerTime - radius) * sampleRate);
-  const endIndex = Math.ceil((centerTime + radius) * sampleRate);
-  const totalSamples = buffer.length;
-
-  for (let index = startIndex; index <= endIndex; index += 1) {
-    const wrappedIndex = ((index % totalSamples) + totalSamples) % totalSamples;
-    const position = wrappedIndex / sampleRate;
-    const delta = getWrappedDistance(position, centerTime, loopDuration);
-
-    if (Math.abs(delta) > radius) {
-      continue;
-    }
-
-    buffer[wrappedIndex] += renderSample(delta);
+async function loadAudioBuffer(audioContext, fileName) {
+  const response = await fetch(getAudioAssetUrl(fileName));
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${fileName}: ${response.status}`);
   }
+
+  const fileData = await response.arrayBuffer();
+  return audioContext.decodeAudioData(fileData.slice(0));
 }
 
-function addLoopedStereoEvent(
-  left,
-  right,
-  loopDuration,
-  sampleRate,
-  centerTime,
-  radius,
-  pan,
-  renderSample,
-) {
-  const gains = getStereoPanGains(pan);
+async function loadAmbientBuffers(audioContext) {
+  if (state.ambientBuffers) {
+    return state.ambientBuffers;
+  }
 
-  addLoopedEvent(left, loopDuration, sampleRate, centerTime, radius, (delta) => {
-    return renderSample(delta) * gains.left;
-  });
-  addLoopedEvent(right, loopDuration, sampleRate, centerTime, radius, (delta) => {
-    return renderSample(delta) * gains.right;
-  });
+  if (state.ambientLoadPromise) {
+    return state.ambientLoadPromise;
+  }
+
+  state.ambientLoadPromise = Promise.all(
+    Object.entries(AUDIO_ASSET_FILES).map(async ([groupName, fileNames]) => {
+      const loadedBuffers = [];
+
+      for (const fileName of fileNames) {
+        try {
+          const buffer = await loadAudioBuffer(audioContext, fileName);
+          loadedBuffers.push(buffer);
+        } catch (error) {
+          console.warn(`Unable to load ambient asset: ${fileName}`, error);
+        }
+      }
+
+      return [groupName, loadedBuffers];
+    }),
+  )
+    .then((entries) => {
+      state.ambientBuffers = Object.fromEntries(entries);
+
+      if (Object.values(state.ambientBuffers).every((buffers) => buffers.length === 0)) {
+        console.warn("Ambient audio assets are missing from assets/audio/.");
+      }
+
+      return state.ambientBuffers;
+    })
+    .finally(() => {
+      state.ambientLoadPromise = null;
+    });
+
+  return state.ambientLoadPromise;
 }
 
-function sineAt(loopPhase, frequency, phaseOffset = 0) {
-  return Math.sin(loopPhase * frequency * AMBIENT_LOOP_DURATION + phaseOffset);
+function connectWithOptionalPan(audioContext, inputNode, destination, pan) {
+  if (typeof audioContext.createStereoPanner === "function") {
+    const panner = audioContext.createStereoPanner();
+    panner.pan.setValueAtTime(Math.max(-1, Math.min(1, pan)), audioContext.currentTime);
+    inputNode.connect(panner);
+    panner.connect(destination);
+    return;
+  }
+
+  inputNode.connect(destination);
 }
 
-function createAmbientLoopBuffer(audioContext) {
-  const sampleRate = audioContext.sampleRate;
-  const frameCount = Math.floor(sampleRate * AMBIENT_LOOP_DURATION);
-  const buffer = audioContext.createBuffer(2, frameCount, sampleRate);
-  const left = buffer.getChannelData(0);
-  const right = buffer.getChannelData(1);
-
-  for (let frame = 0; frame < frameCount; frame += 1) {
-    const loopPhase = (frame / frameCount) * Math.PI * 2;
-    const breeze =
-      0.5 +
-      0.18 * Math.sin(loopPhase - 0.45) +
-      0.1 * Math.sin(loopPhase * 2 + 0.9) +
-      0.06 * Math.sin(loopPhase * 4 - 1.2);
-    const gust =
-      0.65 +
-      0.2 * Math.sin(loopPhase * 1.5 - 0.8) +
-      0.09 * Math.sin(loopPhase * 3.5 + 0.4);
-    const windBody =
-      (Math.sin(loopPhase * 1.2 - 0.6) * 0.16 +
-        Math.sin(loopPhase * 2.1 + 0.7) * 0.1 +
-        Math.sin(loopPhase * 3.2 - 1.3) * 0.05) *
-      breeze;
-    const windHissLeft =
-      sineAt(loopPhase, 180, 0.5) * 0.012 +
-      sineAt(loopPhase, 310, -0.2) * 0.009 +
-      sineAt(loopPhase, 470, 1.1) * 0.006;
-    const windHissRight =
-      sineAt(loopPhase, 195, -0.1) * 0.011 +
-      sineAt(loopPhase, 330, 0.4) * 0.008 +
-      sineAt(loopPhase, 455, -0.9) * 0.006;
-    const whistleLeft =
-      (0.014 + 0.02 * Math.max(0, Math.sin(loopPhase * 2.6 - 0.3))) *
-      gust *
-      (sineAt(loopPhase, 640, Math.sin(loopPhase * 3.2) * 0.9) +
-        sineAt(loopPhase, 930, Math.sin(loopPhase * 4.1 + 0.2) * 0.55) * 0.55);
-    const whistleRight =
-      (0.014 + 0.018 * Math.max(0, Math.sin(loopPhase * 2.6 + 0.15))) *
-      gust *
-      (sineAt(loopPhase, 680, Math.sin(loopPhase * 3.4 + 0.2) * 0.85) +
-        sineAt(loopPhase, 970, Math.sin(loopPhase * 4.4 - 0.1) * 0.5) * 0.5);
-
-    left[frame] = windBody + windHissLeft * gust + whistleLeft;
-    right[frame] = windBody * 0.97 + windHissRight * gust + whistleRight;
+function clearAmbientScheduling() {
+  if (state.ambientWindSchedulerTimeoutId) {
+    window.clearTimeout(state.ambientWindSchedulerTimeoutId);
+    state.ambientWindSchedulerTimeoutId = null;
   }
 
-  const clucks = [
-    { time: 1.2, pan: -0.35, pitch: 620 },
-    { time: 3.55, pan: 0.2, pitch: 680 },
-    { time: 6.05, pan: -0.15, pitch: 640 },
-    { time: 8.9, pan: 0.28, pitch: 700 },
-    { time: 13.3, pan: -0.25, pitch: 660 },
-    { time: 15.55, pan: 0.12, pitch: 690 },
-  ];
-
-  for (const { time, pan, pitch } of clucks) {
-    addLoopedStereoEvent(
-      left,
-      right,
-      AMBIENT_LOOP_DURATION,
-      sampleRate,
-      time,
-      0.2,
-      pan,
-      (delta) => {
-        const progress = (delta + 0.2) / 0.4;
-        const envelope = Math.sin(progress * Math.PI) ** 2.8;
-        const chirpA = Math.sin(delta * Math.PI * 2 * pitch);
-        const chirpB = Math.sin(delta * Math.PI * 2 * (pitch * 1.65) + 0.7);
-        const throat = Math.sin(delta * Math.PI * 2 * (pitch * 0.48) - 0.2);
-        return envelope * (chirpA * 0.025 + chirpB * 0.012 + throat * 0.012);
-      },
-    );
+  for (const timeoutId of Object.values(state.ambientOneShotTimeoutIds)) {
+    window.clearTimeout(timeoutId);
   }
 
-  const moos = [
-    { time: 4.75, pan: -0.45, pitch: 132 },
-    { time: 12.45, pan: 0.38, pitch: 128 },
-  ];
-
-  for (const { time, pan, pitch } of moos) {
-    addLoopedStereoEvent(
-      left,
-      right,
-      AMBIENT_LOOP_DURATION,
-      sampleRate,
-      time,
-      0.9,
-      pan,
-      (delta) => {
-        const progress = (delta + 0.9) / 1.8;
-        const envelope = Math.sin(progress * Math.PI) ** 1.8;
-        const swell = 0.82 + 0.18 * Math.sin(progress * Math.PI * 2);
-        const body = Math.sin(delta * Math.PI * 2 * pitch);
-        const throat = Math.sin(delta * Math.PI * 2 * (pitch * 0.5) + 0.45);
-        const nasal = Math.sin(delta * Math.PI * 2 * (pitch * 1.48) - 0.3);
-        return envelope * swell * (body * 0.038 + throat * 0.03 + nasal * 0.015);
-      },
-    );
-  }
-
-  const oinks = [
-    { time: 7.25, pan: 0.45, pitch: 245 },
-    { time: 16.15, pan: -0.3, pitch: 230 },
-  ];
-
-  for (const { time, pan, pitch } of oinks) {
-    addLoopedStereoEvent(
-      left,
-      right,
-      AMBIENT_LOOP_DURATION,
-      sampleRate,
-      time,
-      0.34,
-      pan,
-      (delta) => {
-        const progress = (delta + 0.34) / 0.68;
-        const envelope = Math.sin(progress * Math.PI) ** 2.4;
-        const snort = Math.sin(delta * Math.PI * 2 * pitch);
-        const grunt = Math.sin(delta * Math.PI * 2 * (pitch * 0.52) - 0.4);
-        const nose = Math.sin(delta * Math.PI * 2 * (pitch * 1.92) + 0.6);
-        return envelope * (snort * 0.024 + grunt * 0.02 + nose * 0.01);
-      },
-    );
-  }
-
-  addLoopedStereoEvent(
-    left,
-    right,
-    AMBIENT_LOOP_DURATION,
-    sampleRate,
-    10.55,
-    0.82,
-    0.08,
-    (delta) => {
-      const progress = (delta + 0.82) / 1.64;
-      const envelope = Math.sin(progress * Math.PI) ** 2;
-      const syllableA = Math.max(0, Math.sin(progress * Math.PI * 3.1 - 0.45));
-      const syllableB = Math.max(0, Math.sin(progress * Math.PI * 5.8 - 2.2));
-      const cry =
-        Math.sin(delta * Math.PI * 2 * 520) * 0.018 +
-        Math.sin(delta * Math.PI * 2 * 780 + 0.4) * 0.013 +
-        Math.sin(delta * Math.PI * 2 * 1040 - 0.3) * 0.008;
-      return envelope * (syllableA * 0.95 + syllableB * 0.7) * cry;
-    },
-  );
-
-  for (let frame = 0; frame < frameCount; frame += 1) {
-    left[frame] = clampSample(left[frame] * 0.82);
-    right[frame] = clampSample(right[frame] * 0.82);
-  }
-
-  return buffer;
+  state.ambientOneShotTimeoutIds = {};
 }
 
 function fadeAmbientGain(targetValue, durationSeconds) {
@@ -310,11 +231,136 @@ function fadeAmbientGain(targetValue, durationSeconds) {
 
   const now = state.ambientAudioContext.currentTime;
   const gainParam = state.ambientMasterGain.gain;
-  const currentValue = gainParam.value;
+  const currentValue = Math.max(AMBIENT_MIN_GAIN, gainParam.value);
 
   gainParam.cancelScheduledValues(now);
   gainParam.setValueAtTime(currentValue, now);
-  gainParam.linearRampToValueAtTime(targetValue, now + durationSeconds);
+  gainParam.linearRampToValueAtTime(Math.max(AMBIENT_MIN_GAIN, targetValue), now + durationSeconds);
+}
+
+function scheduleWindSource(buffer, startTime) {
+  if (!state.ambientAudioContext || !state.ambientMasterGain) {
+    return;
+  }
+
+  const audioContext = state.ambientAudioContext;
+  const source = audioContext.createBufferSource();
+  const gainNode = audioContext.createGain();
+  const crossfadeSeconds = Math.min(
+    DEFAULT_WIND_CROSSFADE_SECONDS,
+    Math.max(0.15, buffer.duration / 4),
+  );
+  const endTime = startTime + buffer.duration;
+  const fadeOutStart = Math.max(startTime + crossfadeSeconds, endTime - crossfadeSeconds);
+
+  source.buffer = buffer;
+  source.connect(gainNode);
+  gainNode.connect(state.ambientMasterGain);
+  gainNode.gain.setValueAtTime(AMBIENT_MIN_GAIN, startTime);
+  gainNode.gain.linearRampToValueAtTime(1, startTime + crossfadeSeconds);
+  gainNode.gain.setValueAtTime(1, fadeOutStart);
+  gainNode.gain.linearRampToValueAtTime(AMBIENT_MIN_GAIN, endTime);
+  source.start(startTime);
+  source.stop(endTime + 0.05);
+
+  return buffer.duration - crossfadeSeconds;
+}
+
+function ensureWindScheduled() {
+  if (!state.ambientAudioContext || !state.ambientBuffers?.wind?.length || document.hidden) {
+    return;
+  }
+
+  const audioContext = state.ambientAudioContext;
+  const windBuffer = state.ambientBuffers.wind[0];
+  const now = audioContext.currentTime;
+  let nextStartTime = Math.max(state.ambientWindScheduledUntil, now);
+
+  if (nextStartTime <= now + 0.05) {
+    nextStartTime = now;
+  }
+
+  while (nextStartTime < now + WIND_SCHEDULE_AHEAD_SECONDS) {
+    const intervalSeconds = scheduleWindSource(windBuffer, nextStartTime);
+    if (!intervalSeconds) {
+      return;
+    }
+
+    nextStartTime += intervalSeconds;
+  }
+
+  state.ambientWindScheduledUntil = nextStartTime;
+  state.ambientWindSchedulerTimeoutId = window.setTimeout(() => {
+    state.ambientWindSchedulerTimeoutId = null;
+    ensureWindScheduled();
+  }, 1000);
+}
+
+function playOneShot(buffer, { gain, pan, playbackRate }) {
+  if (!state.ambientAudioContext || !state.ambientMasterGain) {
+    return;
+  }
+
+  const audioContext = state.ambientAudioContext;
+  const source = audioContext.createBufferSource();
+  const gainNode = audioContext.createGain();
+  const now = audioContext.currentTime;
+  const clampedPlaybackRate = Math.max(0.5, playbackRate);
+  const playbackDuration = buffer.duration / clampedPlaybackRate;
+  const fadeInSeconds = Math.min(0.04, playbackDuration / 4);
+  const fadeOutSeconds = Math.min(0.08, playbackDuration / 3);
+  const fadeOutStart = Math.max(now + fadeInSeconds, now + playbackDuration - fadeOutSeconds);
+
+  source.buffer = buffer;
+  source.playbackRate.setValueAtTime(clampedPlaybackRate, now);
+  source.connect(gainNode);
+  connectWithOptionalPan(audioContext, gainNode, state.ambientMasterGain, pan);
+
+  gainNode.gain.setValueAtTime(AMBIENT_MIN_GAIN, now);
+  gainNode.gain.linearRampToValueAtTime(gain, now + fadeInSeconds);
+  gainNode.gain.setValueAtTime(gain, fadeOutStart);
+  gainNode.gain.linearRampToValueAtTime(AMBIENT_MIN_GAIN, now + playbackDuration);
+
+  source.start(now);
+  source.stop(now + playbackDuration + 0.05);
+}
+
+function scheduleAnimalGroup(groupName) {
+  if (!state.ambientAudioStarted || !state.ambientBuffers || document.hidden) {
+    return;
+  }
+
+  const groupConfig = AMBIENT_ONE_SHOT_GROUPS[groupName];
+  const groupBuffers = state.ambientBuffers[groupName];
+  if (!groupConfig || !groupBuffers || groupBuffers.length === 0) {
+    return;
+  }
+
+  const delayMs = randomBetween(groupConfig.minDelay, groupConfig.maxDelay) * 1000;
+  state.ambientOneShotTimeoutIds[groupName] = window.setTimeout(() => {
+    const buffer = getRandomArrayItem(groupBuffers);
+
+    if (buffer && !document.hidden) {
+      playOneShot(buffer, {
+        gain: groupConfig.volume,
+        pan: randomBetween(groupConfig.minPan, groupConfig.maxPan),
+        playbackRate: randomBetween(
+          groupConfig.minPlaybackRate,
+          groupConfig.maxPlaybackRate,
+        ),
+      });
+    }
+
+    scheduleAnimalGroup(groupName);
+  }, delayMs);
+}
+
+function scheduleAnimalGroups() {
+  Object.keys(AMBIENT_ONE_SHOT_GROUPS).forEach((groupName) => {
+    if (!state.ambientOneShotTimeoutIds[groupName]) {
+      scheduleAnimalGroup(groupName);
+    }
+  });
 }
 
 function scheduleAmbientSuspend() {
@@ -326,7 +372,8 @@ function scheduleAmbientSuspend() {
     window.clearTimeout(state.ambientSuspendTimeoutId);
   }
 
-  fadeAmbientGain(0.0001, 0.2);
+  clearAmbientScheduling();
+  fadeAmbientGain(AMBIENT_MIN_GAIN, 0.2);
   state.ambientSuspendTimeoutId = window.setTimeout(() => {
     if (state.ambientAudioContext && document.hidden) {
       state.ambientAudioContext.suspend().catch(() => {});
@@ -346,8 +393,13 @@ function resumeAmbientAudio() {
   }
 
   const resumeAndFade = () => {
-    state.ambientMasterGain.gain.value = 0.0001;
+    state.ambientMasterGain.gain.setValueAtTime(
+      AMBIENT_MIN_GAIN,
+      state.ambientAudioContext.currentTime,
+    );
     fadeAmbientGain(AMBIENT_MASTER_VOLUME, AMBIENT_FADE_SECONDS);
+    ensureWindScheduled();
+    scheduleAnimalGroups();
   };
 
   if (state.ambientAudioContext.state === "suspended") {
@@ -358,35 +410,29 @@ function resumeAmbientAudio() {
   resumeAndFade();
 }
 
-function startAmbientAudio() {
-  if (state.ambientAudioStarted) {
-    resumeAmbientAudio();
-    return;
-  }
-
+async function startAmbientAudio() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) {
     return;
   }
 
   try {
-    const audioContext = new AudioContextClass();
-    const source = audioContext.createBufferSource();
-    const masterGain = audioContext.createGain();
+    if (!state.ambientAudioContext) {
+      const audioContext = new AudioContextClass();
+      const masterGain = audioContext.createGain();
 
-    source.buffer = createAmbientLoopBuffer(audioContext);
-    source.loop = true;
-    masterGain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+      masterGain.gain.setValueAtTime(AMBIENT_MIN_GAIN, audioContext.currentTime);
+      masterGain.connect(audioContext.destination);
 
-    source.connect(masterGain);
-    masterGain.connect(audioContext.destination);
-    source.start();
+      state.ambientAudioContext = audioContext;
+      state.ambientMasterGain = masterGain;
+    }
 
-    state.ambientAudioContext = audioContext;
-    state.ambientMasterGain = masterGain;
-    state.ambientSource = source;
+    if (!state.ambientBuffers) {
+      await loadAmbientBuffers(state.ambientAudioContext);
+    }
+
     state.ambientAudioStarted = true;
-
     resumeAmbientAudio();
   } catch (error) {
     console.error("Unable to start ambient audio.", error);
