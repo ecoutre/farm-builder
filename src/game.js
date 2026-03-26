@@ -240,7 +240,6 @@ function renderToolbar() {
     button.setAttribute("aria-label", `Select ${farmObject.label}`);
     button.innerHTML = `
       <span class="farm-object-button__icon" aria-hidden="true">${farmObject.icon}</span>
-      <span class="farm-object-button__label">${farmObject.label}</span>
     `;
     button.addEventListener("click", () => setActiveObject(farmObject.id));
     toolbarButtons.appendChild(button);
