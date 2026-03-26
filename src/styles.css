@@ -73,154 +73,244 @@ body {
   z-index: 3;
   width: min(780px, calc(100% - 20px));
   transform: translateX(-50%);
-  padding: 12px;
-  border: 4px solid #1b3010;
+  padding: 12px 18px;
+  border: 4px solid #4b2e17;
+  border-radius: 16px;
   background:
     repeating-linear-gradient(
-      0deg,
-      #9abf5a 0 6px,
-      #97ba57 6px 12px
-    );
+      6deg,
+      rgba(255, 255, 255, 0.08) 0 3px,
+      rgba(255, 255, 255, 0) 3px 8px
+    ),
+    linear-gradient(180deg, #9a6334 0 18%, #89552d 18% 80%, #744624 80% 100%);
   box-shadow:
-    0 0 0 3px #cee593,
-    0 0 0 6px #39541f,
-    8px 8px 0 #1d3110;
-  color: #13240d;
+    inset 0 2px 0 rgba(245, 195, 137, 0.65),
+    inset 0 -4px 0 rgba(78, 46, 20, 0.85),
+    0 6px 0 #3a2314,
+    0 12px 18px rgba(0, 0, 0, 0.28);
+  color: #24150a;
   font-family: "Courier New", monospace;
   image-rendering: pixelated;
+}
+
+.farm-toolbar::before,
+.farm-toolbar::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 3px solid #4b2e17;
+  background: linear-gradient(180deg, #a96d39 0 50%, #7a4a26 50% 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(245, 195, 137, 0.65),
+    0 3px 0 #3a2314;
+  transform: translateY(-50%);
+}
+
+.farm-toolbar::before {
+  left: -14px;
+}
+
+.farm-toolbar::after {
+  right: -14px;
 }
 
 .farm-toolbar__buttons {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 6px;
+  gap: 10px;
+}
+
+.farm-toolbar__slot {
+  aspect-ratio: 1 / 1;
+  min-height: 72px;
+  padding: 5px;
+  border-radius: 12px;
+  border: 3px solid #5e3a1f;
+  background: linear-gradient(180deg, #6d4324 0 40%, #57341b 40% 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(167, 110, 62, 0.8),
+    inset 0 -2px 0 rgba(44, 26, 14, 0.8);
 }
 
 .farm-object-button {
   appearance: none;
   width: 100%;
+  height: 100%;
   border: 2px solid #1b2d10;
-  background: #d6efaf;
-  color: #1b2d10;
+  border-radius: 11px;
+  background: var(--tile-face, #d6efaf);
+  color: #24150a;
   cursor: pointer;
-  padding: 10px 6px;
+  padding: 6px;
   font: inherit;
   display: grid;
   place-items: center;
-  gap: 0;
-  box-shadow: 3px 3px 0 #1b2d10;
-  transition: background-color 100ms ease, transform 80ms ease, box-shadow 80ms ease;
+  box-shadow:
+    inset 2px 2px 0 var(--tile-light, #e4f8bf),
+    inset -2px -2px 0 var(--tile-dark, #95b173),
+    0 3px 0 #2a180d;
+  transition: transform 80ms ease, box-shadow 80ms ease, border-color 80ms ease;
   image-rendering: pixelated;
 }
 
 .farm-object-button:hover {
-  filter: brightness(1.05);
+  transform: translateY(-1px);
 }
 
 .farm-object-button:focus-visible {
-  outline: 2px dashed #173507;
-  outline-offset: 2px;
+  outline: 2px dashed #ffec9d;
+  outline-offset: 1px;
 }
 
 .farm-object-button.is-active {
-  border-color: #6d3e14;
-  box-shadow: 1px 1px 0 #1b2d10;
-  transform: translate(2px, 2px);
+  border-color: #ffe491;
+  box-shadow:
+    0 0 0 2px #7c4c22,
+    inset 2px 2px 0 var(--tile-light, #e4f8bf),
+    inset -2px -2px 0 var(--tile-dark, #95b173),
+    0 5px 0 #2a180d;
+  transform: translateY(-2px);
 }
 
 .farm-object-button__icon {
-  width: 44px;
-  height: 44px;
-  border: 2px solid #1b2d10;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.12) 0 3px,
-      rgba(255, 255, 255, 0) 3px 6px
-    ),
-    rgba(244, 255, 230, 0.95);
+  width: 54px;
+  height: 54px;
+  border: 2px solid rgba(0, 0, 0, 0.45);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.16);
   display: grid;
   place-items: center;
-  font-size: 1.7rem;
-  line-height: 1;
+}
+
+.pixel-icon {
+  width: 4px;
+  height: 4px;
+  background: transparent;
+  color: #25140c;
+  image-rendering: pixelated;
+}
+
+.pixel-icon--barn {
+  box-shadow:
+    8px 0 currentColor,
+    4px 4px currentColor, 8px 4px currentColor, 12px 4px currentColor,
+    0 8px currentColor, 4px 8px currentColor, 8px 8px currentColor, 12px 8px currentColor, 16px 8px currentColor,
+    0 12px currentColor, 4px 12px currentColor, 8px 12px currentColor, 12px 12px currentColor, 16px 12px currentColor,
+    0 16px currentColor, 8px 16px currentColor, 16px 16px currentColor,
+    0 20px currentColor, 8px 20px currentColor, 16px 20px currentColor,
+    0 24px currentColor, 4px 24px currentColor, 8px 24px currentColor, 12px 24px currentColor, 16px 24px currentColor;
+}
+
+.pixel-icon--coop {
+  box-shadow:
+    12px 0 currentColor,
+    8px 4px currentColor, 12px 4px currentColor, 16px 4px currentColor,
+    4px 8px currentColor, 8px 8px currentColor, 12px 8px currentColor, 16px 8px currentColor, 20px 8px currentColor,
+    0 12px currentColor, 4px 12px currentColor, 8px 12px currentColor, 12px 12px currentColor, 16px 12px currentColor,
+    4px 16px currentColor, 8px 16px currentColor, 12px 16px currentColor, 16px 16px currentColor, 20px 16px currentColor,
+    8px 20px currentColor, 12px 20px currentColor, 20px 20px currentColor;
+}
+
+.pixel-icon--silo {
+  box-shadow:
+    8px 0 currentColor, 12px 0 currentColor,
+    4px 4px currentColor, 8px 4px currentColor, 12px 4px currentColor, 16px 4px currentColor,
+    4px 8px currentColor, 16px 8px currentColor,
+    4px 12px currentColor, 8px 12px currentColor, 12px 12px currentColor, 16px 12px currentColor,
+    4px 16px currentColor, 16px 16px currentColor,
+    4px 20px currentColor, 16px 20px currentColor,
+    4px 24px currentColor, 8px 24px currentColor, 12px 24px currentColor, 16px 24px currentColor;
+}
+
+.pixel-icon--tree {
+  box-shadow:
+    8px 0 currentColor, 12px 0 currentColor,
+    4px 4px currentColor, 8px 4px currentColor, 12px 4px currentColor, 16px 4px currentColor,
+    0 8px currentColor, 4px 8px currentColor, 8px 8px currentColor, 12px 8px currentColor, 16px 8px currentColor, 20px 8px currentColor,
+    4px 12px currentColor, 8px 12px currentColor, 12px 12px currentColor, 16px 12px currentColor,
+    8px 16px currentColor, 12px 16px currentColor,
+    8px 20px currentColor, 12px 20px currentColor,
+    8px 24px currentColor, 12px 24px currentColor;
+}
+
+.pixel-icon--crop {
+  box-shadow:
+    4px 0 currentColor, 12px 0 currentColor, 20px 0 currentColor,
+    8px 4px currentColor, 16px 4px currentColor,
+    4px 8px currentColor, 12px 8px currentColor, 20px 8px currentColor,
+    8px 12px currentColor, 16px 12px currentColor,
+    4px 16px currentColor, 12px 16px currentColor, 20px 16px currentColor,
+    8px 20px currentColor, 16px 20px currentColor,
+    4px 24px currentColor, 12px 24px currentColor, 20px 24px currentColor;
+}
+
+.pixel-icon--pond {
+  box-shadow:
+    8px 0 currentColor, 12px 0 currentColor, 16px 0 currentColor,
+    4px 4px currentColor, 8px 4px currentColor, 12px 4px currentColor, 16px 4px currentColor, 20px 4px currentColor,
+    0 8px currentColor, 4px 8px currentColor, 8px 8px currentColor, 12px 8px currentColor, 16px 8px currentColor,
+    4px 12px currentColor, 8px 12px currentColor, 12px 12px currentColor, 16px 12px currentColor, 20px 12px currentColor,
+    8px 16px currentColor, 12px 16px currentColor, 16px 16px currentColor,
+    12px 20px currentColor;
 }
 
 .farm-object-button--barn {
-  background:
-    repeating-linear-gradient(90deg, #e58f83 0 5px, #db7a70 5px 10px);
-}
-
-.farm-object-button--barn .farm-object-button__icon {
-  background-color: #ffd9d3;
-}
-
-.farm-object-button--coop {
-  background:
-    repeating-linear-gradient(45deg, #f4cf88 0 4px, #efc16a 4px 8px);
-}
-
-.farm-object-button--coop .farm-object-button__icon {
-  background-color: #fff2d4;
-}
-
-.farm-object-button--silo {
-  background:
-    repeating-linear-gradient(0deg, #bcc8d8 0 4px, #a7b6c9 4px 8px);
-}
-
-.farm-object-button--silo .farm-object-button__icon {
-  background-color: #e7edf4;
-}
-
-.farm-object-button--tree {
-  background:
-    repeating-linear-gradient(90deg, #7dbd74 0 5px, #68ab62 5px 10px);
-}
-
-.farm-object-button--tree .farm-object-button__icon {
-  background-color: #dff3dc;
+  --tile-face: #ca6552;
+  --tile-light: #e38a74;
+  --tile-dark: #8f4135;
 }
 
 .farm-object-button--crop {
-  background:
-    repeating-linear-gradient(45deg, #efe17a 0 4px, #e6d25d 4px 8px);
+  --tile-face: #d1b44f;
+  --tile-light: #ebd47a;
+  --tile-dark: #8e7530;
 }
 
-.farm-object-button--crop .farm-object-button__icon {
-  background-color: #fef8d0;
+.farm-object-button--coop {
+  --tile-face: #d98d3d;
+  --tile-light: #ecac64;
+  --tile-dark: #925a24;
+}
+
+.farm-object-button--silo {
+  --tile-face: #8f9fb5;
+  --tile-light: #afbdd0;
+  --tile-dark: #5d6d82;
+}
+
+.farm-object-button--tree {
+  --tile-face: #66a056;
+  --tile-light: #88be74;
+  --tile-dark: #406e37;
 }
 
 .farm-object-button--pond {
-  background:
-    repeating-linear-gradient(90deg, #8ccbf5 0 5px, #74b9e8 5px 10px);
-}
-
-.farm-object-button--pond .farm-object-button__icon {
-  background-color: #d8efff;
-}
-
-.farm-object-button--barn.is-active,
-.farm-object-button--coop.is-active,
-.farm-object-button--silo.is-active,
-.farm-object-button--tree.is-active,
-.farm-object-button--crop.is-active,
-.farm-object-button--pond.is-active {
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 245, 180, 0.95) 0 32%,
-      rgba(255, 226, 120, 0.95) 32% 100%
-    );
+  --tile-face: #4f99c9;
+  --tile-light: #74bbe3;
+  --tile-dark: #306886;
 }
 
 @media (max-width: 700px) {
   .farm-toolbar {
     width: calc(100% - 12px);
     bottom: 8px;
-    padding: 10px 8px;
+    padding: 10px 12px;
   }
 
   .farm-toolbar__buttons {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .farm-toolbar__slot {
+    min-height: 66px;
+  }
+
+  .farm-object-button__icon {
+    width: 46px;
+    height: 46px;
   }
 }

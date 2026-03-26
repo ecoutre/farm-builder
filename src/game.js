@@ -232,6 +232,9 @@ function renderToolbar() {
   toolbarButtons.innerHTML = "";
 
   for (const farmObject of FARM_OBJECTS) {
+    const slot = document.createElement("div");
+    slot.className = "farm-toolbar__slot";
+
     const button = document.createElement("button");
     button.type = "button";
     button.className = "farm-object-button";
@@ -239,10 +242,13 @@ function renderToolbar() {
     button.dataset.objectId = farmObject.id;
     button.setAttribute("aria-label", `Select ${farmObject.label}`);
     button.innerHTML = `
-      <span class="farm-object-button__icon" aria-hidden="true">${farmObject.icon}</span>
+      <span class="farm-object-button__icon" aria-hidden="true">
+        <span class="pixel-icon pixel-icon--${farmObject.id}"></span>
+      </span>
     `;
     button.addEventListener("click", () => setActiveObject(farmObject.id));
-    toolbarButtons.appendChild(button);
+    slot.appendChild(button);
+    toolbarButtons.appendChild(slot);
   }
 
   updateActiveUI();
