@@ -415,10 +415,13 @@ function drawDirtBody(ctx, dirtArea) {
     const normalizedY = (y + stripHeight / 2) / dirtArea.height;
     const span = getDirtSpan(dirtArea, normalizedY);
     const cols = Math.ceil(span.width / pixelWidth) + 1;
+    const macroRow = Math.floor(y / 10);
 
     for (let col = 0; col < cols; col += 1) {
-      const seed = hash2D(col + 887, y + 919);
-      const colorAmount = clamp(seed * 0.82 + hash2D(col + 929, y + 941) * 0.18, 0, 1);
+      const macroCol = Math.floor(col / 4);
+      const macroNoise = hash2D(macroCol + 887, macroRow + 919);
+      const microNoise = hash2D(col + 929, Math.floor(y / stripHeight) + 941);
+      const colorAmount = clamp(macroNoise * 0.78 + microNoise * 0.14 + 0.04, 0, 1);
       const blockX = Math.round(span.x + col * pixelWidth);
       const blockWidth = Math.min(pixelWidth, Math.ceil(span.x + span.width - blockX));
       if (blockWidth <= 0) {
@@ -446,7 +449,8 @@ function drawDirtTexture(ctx, dirtArea) {
     const cols = Math.ceil(span.width / cellWidth) + 1;
 
     for (let col = 0; col < cols; col += 1) {
-      const toneNoise = hash2D(col + 521, row + 547);
+      const macroNoise = hash2D(Math.floor(col / 3) + 521, Math.floor(row / 3) + 547);
+      const toneNoise = macroNoise * 0.8 + hash2D(col + 557, row + 563) * 0.2;
       const patchX = Math.round(
         span.x + col * cellWidth + (hash2D(col + 557, row + 563) - 0.5) * cellWidth * 0.65,
       );
@@ -461,24 +465,24 @@ function drawDirtTexture(ctx, dirtArea) {
       }
 
       if (toneNoise > 0.74) {
-        ctx.globalAlpha = 0.07 + (toneNoise - 0.74) * 0.13;
+        ctx.globalAlpha = 0.045 + (toneNoise - 0.74) * 0.09;
         ctx.fillStyle = DIRT_VARIATION_COLORS.light;
         ctx.fillRect(patchX, patchY, patchWidth, patchHeight);
       } else if (toneNoise < 0.24) {
-        ctx.globalAlpha = 0.06 + (0.24 - toneNoise) * 0.12;
+        ctx.globalAlpha = 0.04 + (0.24 - toneNoise) * 0.08;
         ctx.fillStyle = DIRT_VARIATION_COLORS.dark;
         ctx.fillRect(patchX, patchY, patchWidth, patchHeight);
       } else if (toneNoise > 0.49 && toneNoise < 0.57) {
-        ctx.globalAlpha = 0.038;
+        ctx.globalAlpha = 0.022;
         ctx.fillStyle = DIRT_VARIATION_COLORS.mid;
         ctx.fillRect(patchX, patchY, 1, 1);
       }
 
-      if (hash2D(col + 617, row + 631) > 0.985) {
+      if (hash2D(col + 617, row + 631) > 0.992) {
         const pebbleSize = 2 + Math.floor(hash2D(col + 641, row + 653) * 2);
         const pebbleColor =
           DIRT_PEBBLE_COLORS[Math.floor(hash2D(col + 659, row + 673) * DIRT_PEBBLE_COLORS.length)];
-        ctx.globalAlpha = 0.24;
+        ctx.globalAlpha = 0.16;
         ctx.fillStyle = pebbleColor;
         ctx.fillRect(
           patchX + Math.floor(patchWidth * 0.25),
