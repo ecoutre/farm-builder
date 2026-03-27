@@ -5,6 +5,7 @@ const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
 const PLACED_OBJECT_BASE_SIZE = 40;
 const PLACED_OBJECT_SCALE_UP = 2;
+const SKY_HEIGHT_RATIO = 0.32;
 const FARM_OBJECTS = [
   {
     id: "barn",
@@ -269,6 +270,88 @@ function getObjectById(objectId) {
   return FARM_OBJECTS.find((farmObject) => farmObject.id === objectId);
 }
 
+function createPlacementImage(imageSrc = "") {
+  const img = document.createElement("img");
+  img.src = imageSrc;
+  img.alt = "";
+  img.draggable = false;
+  img.style.width = "100%";
+  img.style.height = "100%";
+  img.style.objectFit = "contain";
+  img.style.imageRendering = "pixelated";
+  return img;
+}
+
+function updatePlacedObjectPosition(placement, x = placement.x, y = placement.y) {
+  if (!placement.element) {
+    return;
+  }
+
+  placement.element.style.left = `${x}px`;
+  placement.element.style.top = `${y}px`;
+  placement.element.style.width = `${placement.width}px`;
+  placement.element.style.height = `${placement.height}px`;
+}
+
+function ensurePreviewObject() {
+  const { placementLayer } = getUIRefs();
+  let previewEl = placementLayer.querySelector(".placement-preview");
+
+  if (!previewEl) {
+    previewEl = document.createElement("div");
+    previewEl.className = "placed-object placement-preview";
+    previewEl.dataset.preview = "true";
+    previewEl.setAttribute("aria-hidden", "true");
+    previewEl.appendChild(createPlacementImage());
+    placementLayer.appendChild(previewEl);
+  }
+
+  if (placementLayer.lastElementChild !== previewEl) {
+    placementLayer.appendChild(previewEl);
+  }
+
+  return previewEl;
+}
+
+function hidePlacementPreview() {
+  const { placementLayer } = getUIRefs();
+  const previewEl = placementLayer.querySelector(".placement-preview");
+
+  if (!previewEl) {
+    return;
+  }
+
+  previewEl.classList.remove("is-visible", "is-blocked");
+}
+
+function syncPreviewObject() {
+  const activeObject = getObjectById(state.activeObjectId);
+  const previewEl = ensurePreviewObject();
+  const previewImage = previewEl.querySelector("img");
+
+  if (!previewImage) {
+    throw new Error("Placement preview image is missing.");
+  }
+
+  if (!activeObject) {
+    previewImage.removeAttribute("src");
+    previewEl.removeAttribute("data-object-id");
+    previewEl.style.width = "0px";
+    previewEl.style.height = "0px";
+    hidePlacementPreview();
+    return;
+  }
+
+  previewImage.src = activeObject.imageSrc;
+  previewEl.dataset.objectId = activeObject.id;
+  previewEl.style.width = `${activeObject.placedWidth}px`;
+  previewEl.style.height = `${activeObject.placedHeight}px`;
+
+  if (!state.preview.isPointerActive) {
+    hidePlacementPreview();
+  }
+}
+
 function updateActiveUI() {
   const { toolbarButtons } = getUIRefs();
 
@@ -285,6 +368,8 @@ function setActiveObject(objectId) {
   if (objectId == null) {
     state.activeObjectId = null;
     updateActiveUI();
+    syncPreviewObject();
+    hidePlacementPreview();
     return;
   }
 
@@ -337,21 +422,18 @@ function renderPlacedObject(placement) {
   const { placementLayer } = getUIRefs();
   const objectEl = document.createElement("div");
   objectEl.className = "placed-object";
-  const img = document.createElement("img");
-  img.src = placement.imageSrc;
-  img.alt = "";
-  img.draggable = false;
-  img.style.width = "100%";
-  img.style.height = "100%";
-  img.style.objectFit = "contain";
-  img.style.imageRendering = "pixelated";
+  const img = createPlacementImage(placement.imageSrc);
 
   objectEl.appendChild(img);
   objectEl.setAttribute("aria-label", `${placement.label} placed`);
-  objectEl.style.left = `${placement.x}px`;
-  objectEl.style.top = `${placement.y}px`;
-  objectEl.style.width = `${placement.width}px`;
-  objectEl.style.height = `${placement.height}px`;
+  placement.element = objectEl;
+  updatePlacedObjectPosition(placement);
+  objectEl.addEventListener("pointerdown", (event) =>
+    startPlacementDrag(placement, objectEl, event),
+  );
+  objectEl.addEventListener("pointermove", handlePlacementDragMove);
+  objectEl.addEventListener("pointerup", endPlacementDrag);
+  objectEl.addEventListener("pointercancel", endPlacementDrag);
   placementLayer.appendChild(objectEl);
 }
 
@@ -367,10 +449,20 @@ function getPlacementFootprint(centerX, centerY, width, height) {
   };
 }
 
-function overlapsExistingPlacement(centerX, centerY, width, height) {
+function overlapsExistingPlacement(
+  centerX,
+  centerY,
+  width,
+  height,
+  excludedPlacement = null,
+) {
   const nextFootprint = getPlacementFootprint(centerX, centerY, width, height);
 
   return state.placements.some((placement) => {
+    if (placement === excludedPlacement) {
+      return false;
+    }
+
     const existingFootprint = getPlacementFootprint(
       placement.x,
       placement.y,
@@ -386,7 +478,14 @@ function overlapsExistingPlacement(centerX, centerY, width, height) {
   });
 }
 
-function getSnappedPlacement(clientX, clientY, width, height) {
+function getSnappedPlacement(
+  clientX,
+  clientY,
+  width,
+  height,
+  offsetX = 0,
+  offsetY = 0,
+) {
   const { view } = getViewAndCanvas();
   const bounds = view.getBoundingClientRect();
   const relativeX = clientX - bounds.left - offsetX;
@@ -414,14 +513,26 @@ function updatePlacementPreview(clientX, clientY) {
     return;
   }
 
+  syncPreviewObject();
   const previewEl = ensurePreviewObject();
-  const placement = getSnappedPlacement(clientX, clientY);
+  const placement = getSnappedPlacement(
+    clientX,
+    clientY,
+    activeObject.placedWidth,
+    activeObject.placedHeight,
+  );
   const isBlocked =
-    placement.isPlaceable && overlapsExistingPlacement(placement.x, placement.y);
+    placement.isInsideBounds &&
+    overlapsExistingPlacement(
+      placement.x,
+      placement.y,
+      activeObject.placedWidth,
+      activeObject.placedHeight,
+    );
 
   previewEl.style.left = `${placement.x}px`;
   previewEl.style.top = `${placement.y}px`;
-  previewEl.classList.toggle("is-visible", placement.isPlaceable);
+  previewEl.classList.toggle("is-visible", placement.isInsideBounds);
   previewEl.classList.toggle("is-blocked", isBlocked);
 }
 
@@ -504,6 +615,8 @@ function handlePlacementDragMove(event) {
   const snappedPlacement = getSnappedPlacement(
     event.clientX,
     event.clientY,
+    activePlacementDrag.placement.width,
+    activePlacementDrag.placement.height,
     activePlacementDrag.offsetX,
     activePlacementDrag.offsetY,
   );
@@ -515,6 +628,8 @@ function handlePlacementDragMove(event) {
     !overlapsExistingPlacement(
       snappedPlacement.x,
       snappedPlacement.y,
+      activePlacementDrag.placement.width,
+      activePlacementDrag.placement.height,
       activePlacementDrag.placement,
     );
 
@@ -578,7 +693,17 @@ function setupPlacementInput() {
   });
 
   canvas.addEventListener("click", (event) => {
-    placeObject(event.clientX, event.clientY);
+    state.preview.clientX = event.clientX;
+    state.preview.clientY = event.clientY;
+
+    if (placeObject(event.clientX, event.clientY)) {
+      // Keep the freshly placed object visible until the pointer moves again.
+      state.preview.isPointerActive = false;
+      hidePlacementPreview();
+      return;
+    }
+
+    state.preview.isPointerActive = true;
     updatePlacementPreview(event.clientX, event.clientY);
   });
 }
@@ -609,7 +734,7 @@ function resizeAndRender() {
   }
 }
 
-function init() {
+export function init() {
   renderToolbar();
   syncPreviewObject();
   setActiveObject(state.activeObjectId);
@@ -618,4 +743,10 @@ function init() {
   window.addEventListener("resize", resizeAndRender);
 }
 
-window.addEventListener("DOMContentLoaded", init);
+if (typeof window !== "undefined") {
+  window.addEventListener("DOMContentLoaded", () => {
+    if (document.getElementById(VIEW_ID)) {
+      init();
+    }
+  });
+}

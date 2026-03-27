@@ -1,0 +1,25 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "description": "Initial commit to create the repository and `main` branch. # Farm Builder",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest run --environment jsdom"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ecoutre/farm-builder.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ecoutre/farm-builder/issues"
+  },
+  "homepage": "https://github.com/ecoutre/farm-builder#readme",
+  "devDependencies": {
+    "jsdom": "^29.0.1",
+    "vitest": "^4.1.2"
+  }
+}
