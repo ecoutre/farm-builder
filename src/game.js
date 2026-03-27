@@ -144,6 +144,10 @@ function fillVariationLayer(ctx, area, options) {
     cellSize,
     seedOffset,
     alphaScale = 1,
+    jitterScale = 0.18,
+    minPatchScale = 0.72,
+    maxPatchScale = 1.18,
+    baseAlpha = 0.012,
   } = options;
 
   ctx.save();
@@ -177,29 +181,42 @@ function fillVariationLayer(ctx, area, options) {
     for (let col = 0; col < cols; col += 1) {
       const toneNoise = hash2D(col + seedOffset * 7.1, row + seedOffset * 11.3);
       let fillStyle = variationColors.mid;
-      let alpha = 0.018;
+      let alpha = baseAlpha;
 
       if (toneNoise > 0.82) {
         fillStyle = variationColors.light;
-        alpha = 0.032 + (toneNoise - 0.82) * 0.12;
+        alpha = baseAlpha + 0.018 + (toneNoise - 0.82) * 0.06;
       } else if (toneNoise < 0.18) {
         fillStyle = variationColors.dark;
-        alpha = 0.028 + (0.18 - toneNoise) * 0.1;
+        alpha = baseAlpha + 0.016 + (0.18 - toneNoise) * 0.05;
       } else if (toneNoise > 0.68) {
         fillStyle = variationColors.mid;
-        alpha = 0.016 + (toneNoise - 0.68) * 0.03;
+        alpha = baseAlpha + 0.008 + (toneNoise - 0.68) * 0.02;
       }
 
-      const xJitter = (hash2D(col + seedOffset * 17.3, row + seedOffset * 19.7) - 0.5) * cellSize;
-      const yJitter = (hash2D(col + seedOffset * 23.9, row + seedOffset * 29.1) - 0.5) * cellSize;
-      const widthScale = 1.05 + hash2D(col + seedOffset * 31.7, row + seedOffset * 37.9) * 0.8;
-      const heightScale = 1.05 + hash2D(col + seedOffset * 41.3, row + seedOffset * 43.7) * 0.8;
-      const cellX = area.x + col * cellSize + xJitter - cellSize * 0.35;
-      const cellY = area.y + row * cellSize + yJitter - cellSize * 0.35;
+      const xJitter =
+        (hash2D(col + seedOffset * 17.3, row + seedOffset * 19.7) - 0.5) * cellSize * jitterScale;
+      const yJitter =
+        (hash2D(col + seedOffset * 23.9, row + seedOffset * 29.1) - 0.5) * cellSize * jitterScale;
+      const widthScale =
+        minPatchScale +
+        hash2D(col + seedOffset * 31.7, row + seedOffset * 37.9) *
+          (maxPatchScale - minPatchScale);
+      const heightScale =
+        minPatchScale +
+        hash2D(col + seedOffset * 41.3, row + seedOffset * 43.7) *
+          (maxPatchScale - minPatchScale);
+      const cellX = Math.round(area.x + col * cellSize + xJitter - cellSize * 0.12);
+      const cellY = Math.round(area.y + row * cellSize + yJitter - cellSize * 0.12);
 
       ctx.globalAlpha = alpha * alphaScale;
       ctx.fillStyle = fillStyle;
-      ctx.fillRect(cellX, cellY, cellSize * widthScale, cellSize * heightScale);
+      ctx.fillRect(
+        cellX,
+        cellY,
+        Math.max(1, Math.round(cellSize * widthScale)),
+        Math.max(1, Math.round(cellSize * heightScale)),
+      );
     }
   }
 
@@ -266,6 +283,48 @@ function drawGrassFlowers(ctx, area) {
       ctx.fillRect(x, y, 2, 2);
       ctx.fillRect(x + 3, y + 1, 2, 2);
       ctx.fillRect(x + 1, y + 3, 2, 2);
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawGrassPixelDetails(ctx, area) {
+  const spacing = Math.max(5, Math.round(Math.min(area.width, area.height) * 0.009));
+  const cols = Math.ceil(area.width / spacing) + 1;
+  const rows = Math.ceil(area.height / spacing) + 1;
+
+  ctx.save();
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const seed = hash2D(col + 809, row + 821);
+      if (seed < 0.52) {
+        continue;
+      }
+
+      const x = Math.round(
+        area.x + col * spacing + (hash2D(col + 823, row + 827) - 0.5) * spacing * 0.7,
+      );
+      const y = Math.round(
+        area.y + row * spacing + (hash2D(col + 829, row + 839) - 0.5) * spacing * 0.7,
+      );
+      const size = seed > 0.88 ? 2 : 1;
+
+      ctx.globalAlpha = 0.12 + hash2D(col + 853, row + 857) * 0.1;
+      ctx.fillStyle =
+        seed > 0.84
+          ? "#c9ea86"
+          : seed < 0.63
+            ? "#628f36"
+            : "#88bf4a";
+      ctx.fillRect(x, y, size, size);
+
+      if (seed > 0.93) {
+        ctx.globalAlpha = 0.08;
+        ctx.fillStyle = "#5b8533";
+        ctx.fillRect(x + 2, y + 1, 1, 1);
+      }
     }
   }
 
@@ -362,50 +421,58 @@ function drawDirtBody(ctx, dirtArea) {
 }
 
 function drawDirtTexture(ctx, dirtArea) {
-  const cellHeight = Math.max(10, Math.round(dirtArea.height * 0.08));
-  const cellWidth = Math.max(16, Math.round(dirtArea.width * 0.045));
-  const rows = Math.ceil(dirtArea.height / (cellHeight * 0.66)) + 1;
+  const cellHeight = Math.max(5, Math.round(dirtArea.height * 0.028));
+  const cellWidth = Math.max(5, Math.round(dirtArea.width * 0.012));
+  const rows = Math.ceil(dirtArea.height / cellHeight) + 1;
 
   ctx.save();
 
   for (let row = 0; row < rows; row += 1) {
-    const y = row * cellHeight * 0.66;
+    const y = row * cellHeight;
     const normalizedY = clamp((y + cellHeight / 2) / dirtArea.height, 0, 1);
     const span = getDirtSpan(dirtArea, normalizedY);
     const cols = Math.ceil(span.width / cellWidth) + 1;
 
     for (let col = 0; col < cols; col += 1) {
       const toneNoise = hash2D(col + 521, row + 547);
-      const patchX = span.x + col * cellWidth + (hash2D(col + 557, row + 563) - 0.5) * cellWidth;
-      const patchY = dirtArea.y + y + (hash2D(col + 571, row + 587) - 0.5) * cellHeight;
-      const patchWidth = cellWidth * (0.75 + hash2D(col + 593, row + 601) * 0.8);
-      const patchHeight = cellHeight * (0.5 + hash2D(col + 607, row + 613) * 0.8);
+      const patchX = Math.round(
+        span.x + col * cellWidth + (hash2D(col + 557, row + 563) - 0.5) * cellWidth * 0.65,
+      );
+      const patchY = Math.round(
+        dirtArea.y + y + (hash2D(col + 571, row + 587) - 0.5) * cellHeight * 0.65,
+      );
+      const patchWidth = 1 + Math.floor(hash2D(col + 593, row + 601) * 3);
+      const patchHeight = 1 + Math.floor(hash2D(col + 607, row + 613) * 3);
 
       if (patchX + patchWidth < span.x || patchX > span.x + span.width) {
         continue;
       }
 
-      if (toneNoise > 0.78) {
-        ctx.globalAlpha = 0.14 + (toneNoise - 0.78) * 0.32;
+      if (toneNoise > 0.73) {
+        ctx.globalAlpha = 0.08 + (toneNoise - 0.73) * 0.16;
         ctx.fillStyle = DIRT_VARIATION_COLORS.light;
         ctx.fillRect(patchX, patchY, patchWidth, patchHeight);
-      } else if (toneNoise < 0.2) {
-        ctx.globalAlpha = 0.11 + (0.2 - toneNoise) * 0.25;
+      } else if (toneNoise < 0.27) {
+        ctx.globalAlpha = 0.07 + (0.27 - toneNoise) * 0.14;
         ctx.fillStyle = DIRT_VARIATION_COLORS.dark;
         ctx.fillRect(patchX, patchY, patchWidth, patchHeight);
+      } else if (toneNoise > 0.56 && toneNoise < 0.63) {
+        ctx.globalAlpha = 0.045;
+        ctx.fillStyle = DIRT_VARIATION_COLORS.mid;
+        ctx.fillRect(patchX, patchY, 1, 1);
       }
 
-      if (hash2D(col + 617, row + 631) > 0.92) {
-        const pebbleSize = 3 + Math.floor(hash2D(col + 641, row + 653) * 4);
+      if (hash2D(col + 617, row + 631) > 0.968) {
+        const pebbleSize = 2 + Math.floor(hash2D(col + 641, row + 653) * 2);
         const pebbleColor =
           DIRT_PEBBLE_COLORS[Math.floor(hash2D(col + 659, row + 673) * DIRT_PEBBLE_COLORS.length)];
-        ctx.globalAlpha = 0.42;
+        ctx.globalAlpha = 0.32;
         ctx.fillStyle = pebbleColor;
         ctx.fillRect(
-          patchX + patchWidth * 0.25,
-          patchY + patchHeight * 0.3,
+          patchX + Math.floor(patchWidth * 0.25),
+          patchY + Math.floor(patchHeight * 0.3),
           pebbleSize,
-          Math.max(2, pebbleSize - 1),
+          pebbleSize,
         );
       }
     }
@@ -451,8 +518,8 @@ function drawDirtEdgeGrass(ctx, dirtArea) {
 function drawBackground(ctx, width, height) {
   const fullArea = { x: 0, y: 0, width, height };
   const dirtArea = getCentralDirtArea(width, height);
-  const grassCellSize = Math.max(26, Math.round(Math.min(width, height) * 0.05));
-  const grassDetailCellSize = Math.max(12, Math.round(Math.min(width, height) * 0.023));
+  const grassCellSize = Math.max(12, Math.round(Math.min(width, height) * 0.022));
+  const grassDetailCellSize = Math.max(6, Math.round(Math.min(width, height) * 0.011));
 
   ctx.imageSmoothingEnabled = true;
 
@@ -461,7 +528,11 @@ function drawBackground(ctx, width, height) {
     variationColors: GRASS_VARIATION_COLORS,
     cellSize: grassCellSize,
     seedOffset: 3,
-    alphaScale: 0.9,
+    alphaScale: 0.48,
+    jitterScale: 0.12,
+    minPatchScale: 0.84,
+    maxPatchScale: 1.08,
+    baseAlpha: 0.008,
   });
 
   fillVariationLayer(ctx, fullArea, {
@@ -472,9 +543,14 @@ function drawBackground(ctx, width, height) {
     },
     cellSize: grassDetailCellSize,
     seedOffset: 9,
-    alphaScale: 0.42,
+    alphaScale: 0.24,
+    jitterScale: 0.08,
+    minPatchScale: 0.8,
+    maxPatchScale: 1.02,
+    baseAlpha: 0.006,
   });
 
+  drawGrassPixelDetails(ctx, fullArea);
   drawGrassTufts(ctx, fullArea);
   drawGrassFlowers(ctx, fullArea);
   drawSoftDirtBorder(ctx, dirtArea);
