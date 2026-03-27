@@ -18,6 +18,10 @@ const FARM_OBJECTS = [
 const state = {
   activeObjectId: FARM_OBJECTS[0].id,
   placements: [],
+  camera: {
+    x: 0,
+    y: 0,
+  },
   preview: {
     clientX: 0,
     clientY: 0,
@@ -25,10 +29,12 @@ const state = {
   },
 };
 let activePlacementDrag = null;
+let activeCanvasDrag = null;
 const SOURCE_TILE_SIZE = 32;
 const TILE_SCALE = 3;
 const TILE_DRAW_SIZE = SOURCE_TILE_SIZE * TILE_SCALE;
 const GRASS_PALETTE = ["#5e9345", "#679c4b", "#70a852", "#7eb760", "#8bc96b"];
+const PAN_DRAG_THRESHOLD = 6;
 let cachedGrassTiles = null;
 const BLADE_STAMPS = [
   {
@@ -184,32 +190,35 @@ function getFarmTop(height) {
 
 function drawBackground(ctx, width, height) {
   const farmTop = getFarmTop(height);
-  const skyGradient = ctx.createLinearGradient(0, 0, 0, farmTop);
+  const horizonY = farmTop - state.camera.y;
+  const skyGradient = ctx.createLinearGradient(0, -state.camera.y, 0, horizonY);
   skyGradient.addColorStop(0, "#78c6ff");
   skyGradient.addColorStop(1, "#d9f4ff");
   ctx.fillStyle = skyGradient;
-  ctx.fillRect(0, 0, width, farmTop);
+  ctx.fillRect(0, 0, width, height);
   ctx.fillStyle = "#d8e9a0";
-  ctx.fillRect(0, Math.max(0, farmTop - 8), width, 8);
+  ctx.fillRect(0, Math.max(0, horizonY - 8), width, 8);
 
   const tiles = getGrassTiles();
-  const cols = Math.ceil(width / TILE_DRAW_SIZE);
-  const rows = Math.ceil(height / TILE_DRAW_SIZE);
+  const startCol = Math.floor(state.camera.x / TILE_DRAW_SIZE) - 1;
+  const endCol = Math.floor((state.camera.x + width) / TILE_DRAW_SIZE) + 1;
+  const startRow = Math.floor(state.camera.y / TILE_DRAW_SIZE) - 1;
+  const endRow = Math.floor((state.camera.y + height) / TILE_DRAW_SIZE) + 1;
   ctx.imageSmoothingEnabled = false;
   ctx.save();
   ctx.beginPath();
-  ctx.rect(0, farmTop, width, Math.max(0, height - farmTop));
+  ctx.rect(0, horizonY, width, Math.max(0, height - horizonY));
   ctx.clip();
 
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
+  for (let row = startRow; row <= endRow; row += 1) {
+    for (let col = startCol; col <= endCol; col += 1) {
       const tileIndex = Math.floor(hash2D(col + 11, row + 19) * tiles.length);
       const tile = tiles[tileIndex];
 
       ctx.drawImage(
         tile,
-        col * TILE_DRAW_SIZE,
-        row * TILE_DRAW_SIZE,
+        col * TILE_DRAW_SIZE - state.camera.x,
+        row * TILE_DRAW_SIZE - state.camera.y,
         TILE_DRAW_SIZE,
         TILE_DRAW_SIZE,
       );
@@ -368,13 +377,26 @@ function getPlacementFootprint(centerX, centerY) {
   };
 }
 
+function isPointerOverBackground(clientX, clientY) {
+  const { canvas } = getViewAndCanvas();
+  return document.elementFromPoint(clientX, clientY) === canvas;
+}
+
+function getScreenPosition(worldX, worldY) {
+  return {
+    x: worldX - state.camera.x,
+    y: worldY - state.camera.y,
+  };
+}
+
 function updatePlacedObjectPosition(placement, x = placement.x, y = placement.y) {
   if (!placement.element) {
     return;
   }
 
-  placement.element.style.left = `${x}px`;
-  placement.element.style.top = `${y}px`;
+  const screenPosition = getScreenPosition(x, y);
+  placement.element.style.left = `${screenPosition.x}px`;
+  placement.element.style.top = `${screenPosition.y}px`;
 }
 
 function overlapsExistingPlacement(centerX, centerY, ignoredPlacement = null) {
@@ -398,17 +420,19 @@ function overlapsExistingPlacement(centerX, centerY, ignoredPlacement = null) {
 function getSnappedPlacement(clientX, clientY, offsetX = 0, offsetY = 0) {
   const { view } = getViewAndCanvas();
   const bounds = view.getBoundingClientRect();
-  const relativeX = clientX - bounds.left - offsetX;
-  const relativeY = clientY - bounds.top - offsetY;
-  const snappedX = Math.round(relativeX / PLACE_GRID_SIZE) * PLACE_GRID_SIZE;
-  const snappedY = Math.round(relativeY / PLACE_GRID_SIZE) * PLACE_GRID_SIZE;
+  const screenX = clientX - bounds.left - offsetX;
+  const screenY = clientY - bounds.top - offsetY;
+  const worldX = screenX + state.camera.x;
+  const worldY = screenY + state.camera.y;
+  const snappedX = Math.round(worldX / PLACE_GRID_SIZE) * PLACE_GRID_SIZE;
+  const snappedY = Math.round(worldY / PLACE_GRID_SIZE) * PLACE_GRID_SIZE;
   const halfSize = PLACED_OBJECT_SIZE / 2;
   const farmTop = getFarmTop(bounds.height);
   const isInsideBounds =
-    snappedX >= halfSize &&
-    snappedX <= bounds.width - halfSize &&
-    snappedY >= halfSize &&
-    snappedY <= bounds.height - halfSize;
+    snappedX >= state.camera.x + halfSize &&
+    snappedX <= state.camera.x + bounds.width - halfSize &&
+    snappedY >= state.camera.y + halfSize &&
+    snappedY <= state.camera.y + bounds.height - halfSize;
   const isInFarmArea = snappedY >= farmTop + halfSize;
 
   return {
@@ -431,9 +455,10 @@ function updatePlacementPreview(clientX, clientY) {
   const placement = getSnappedPlacement(clientX, clientY);
   const isBlocked =
     placement.isPlaceable && overlapsExistingPlacement(placement.x, placement.y);
+  const screenPosition = getScreenPosition(placement.x, placement.y);
 
-  previewEl.style.left = `${placement.x}px`;
-  previewEl.style.top = `${placement.y}px`;
+  previewEl.style.left = `${screenPosition.x}px`;
+  previewEl.style.top = `${screenPosition.y}px`;
   previewEl.classList.toggle("is-visible", placement.isPlaceable);
   previewEl.classList.toggle("is-blocked", isBlocked);
 }
@@ -483,8 +508,8 @@ function startPlacementDrag(placement, objectEl, event) {
     originY: placement.y,
     previewX: placement.x,
     previewY: placement.y,
-    offsetX: event.clientX - bounds.left - placement.x,
-    offsetY: event.clientY - bounds.top - placement.y,
+    offsetX: event.clientX - bounds.left - (placement.x - state.camera.x),
+    offsetY: event.clientY - bounds.top - (placement.y - state.camera.y),
     isValidDrop: true,
   };
 
@@ -561,10 +586,117 @@ function endPlacementDrag(event) {
   updatePlacedObjectPosition(placement);
 }
 
+function renderScene() {
+  const { canvas } = getViewAndCanvas();
+  const width = Math.max(1, Math.round(canvas.clientWidth));
+  const height = Math.max(1, Math.round(canvas.clientHeight));
+  const pixelRatio = window.devicePixelRatio || 1;
+  const ctx = canvas.getContext("2d");
+
+  if (!ctx) {
+    throw new Error("Failed to get 2D rendering context.");
+  }
+
+  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  drawBackground(ctx, width, height);
+  state.placements.forEach((placement) => updatePlacedObjectPosition(placement));
+
+  if (state.preview.isPointerActive && !activeCanvasDrag?.isPanning) {
+    updatePlacementPreview(state.preview.clientX, state.preview.clientY);
+  } else {
+    hidePlacementPreview();
+  }
+}
+
+function updateCanvasPan(event) {
+  if (!activeCanvasDrag) {
+    return;
+  }
+
+  event.preventDefault();
+  const deltaX = event.clientX - activeCanvasDrag.startClientX;
+  const deltaY = event.clientY - activeCanvasDrag.startClientY;
+
+  if (
+    !activeCanvasDrag.isPanning &&
+    Math.hypot(deltaX, deltaY) >= PAN_DRAG_THRESHOLD
+  ) {
+    activeCanvasDrag.isPanning = true;
+    hidePlacementPreview();
+    getViewAndCanvas().canvas.classList.add("is-panning");
+  }
+
+  if (!activeCanvasDrag.isPanning) {
+    state.preview.clientX = event.clientX;
+    state.preview.clientY = event.clientY;
+    state.preview.isPointerActive = true;
+    updatePlacementPreview(event.clientX, event.clientY);
+    return;
+  }
+
+  state.camera.x = activeCanvasDrag.originCameraX - deltaX;
+  state.camera.y = activeCanvasDrag.originCameraY - deltaY;
+  renderScene();
+}
+
+function endCanvasDrag(event) {
+  if (!activeCanvasDrag || activeCanvasDrag.pointerId !== event.pointerId) {
+    return;
+  }
+
+  const { canvas } = getViewAndCanvas();
+  const wasPanning = activeCanvasDrag.isPanning;
+  activeCanvasDrag = null;
+  canvas.classList.remove("is-panning");
+
+  if (canvas.hasPointerCapture(event.pointerId)) {
+    canvas.releasePointerCapture(event.pointerId);
+  }
+
+  state.preview.clientX = event.clientX;
+  state.preview.clientY = event.clientY;
+  state.preview.isPointerActive = true;
+
+  if (
+    !wasPanning &&
+    event.type === "pointerup" &&
+    isPointerOverBackground(event.clientX, event.clientY)
+  ) {
+    placeObject(event.clientX, event.clientY);
+  }
+
+  updatePlacementPreview(event.clientX, event.clientY);
+}
+
 function setupPlacementInput() {
   const { canvas } = getViewAndCanvas();
 
+  canvas.addEventListener("pointerdown", (event) => {
+    if (!event.isPrimary || event.button !== 0 || activeCanvasDrag) {
+      return;
+    }
+
+    activeCanvasDrag = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      originCameraX: state.camera.x,
+      originCameraY: state.camera.y,
+      isPanning: false,
+    };
+    state.preview.clientX = event.clientX;
+    state.preview.clientY = event.clientY;
+    state.preview.isPointerActive = true;
+    canvas.setPointerCapture(event.pointerId);
+  });
+
   canvas.addEventListener("pointermove", (event) => {
+    if (activeCanvasDrag && activeCanvasDrag.pointerId === event.pointerId) {
+      updateCanvasPan(event);
+      return;
+    }
+
     state.preview.clientX = event.clientX;
     state.preview.clientY = event.clientY;
     state.preview.isPointerActive = true;
@@ -572,14 +704,17 @@ function setupPlacementInput() {
   });
 
   canvas.addEventListener("pointerleave", () => {
+    if (activeCanvasDrag) {
+      return;
+    }
+
     state.preview.isPointerActive = false;
     hidePlacementPreview();
   });
 
-  canvas.addEventListener("click", (event) => {
-    placeObject(event.clientX, event.clientY);
-    updatePlacementPreview(event.clientX, event.clientY);
-  });
+  canvas.addEventListener("pointerup", endCanvasDrag);
+  canvas.addEventListener("pointercancel", endCanvasDrag);
+  canvas.addEventListener("lostpointercapture", endCanvasDrag);
 }
 
 function resizeAndRender() {
@@ -599,13 +734,7 @@ function resizeAndRender() {
     throw new Error("Failed to get 2D rendering context.");
   }
 
-  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-  ctx.clearRect(0, 0, width, height);
-  drawBackground(ctx, width, height);
-
-  if (state.preview.isPointerActive) {
-    updatePlacementPreview(state.preview.clientX, state.preview.clientY);
-  }
+  renderScene();
 }
 
 function init() {
