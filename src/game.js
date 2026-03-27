@@ -18,8 +18,8 @@ const FARM_OBJECTS = [
     id: "fence",
     label: "Fence",
     imageSrc: "./src/assets/sprites/fence.png",
-    placedWidth: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 1.45,
-    placedHeight: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 0.7,
+    placedWidth: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 0.725,
+    placedHeight: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 0.35,
   },
   {
     id: "hay-bale",
@@ -32,8 +32,8 @@ const FARM_OBJECTS = [
     id: "cow",
     label: "Cow",
     imageSrc: "./src/assets/sprites/cow.png",
-    placedWidth: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 1.1,
-    placedHeight: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 0.95,
+    placedWidth: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 0.99,
+    placedHeight: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 0.855,
   },
   {
     id: "chicken",
@@ -46,8 +46,8 @@ const FARM_OBJECTS = [
     id: "apple-tree",
     label: "Apple Tree",
     imageSrc: "./src/assets/sprites/apple-tree.png",
-    placedWidth: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 1.2,
-    placedHeight: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 1.5,
+    placedWidth: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 1.02,
+    placedHeight: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 1.275,
   },
 ];
 
