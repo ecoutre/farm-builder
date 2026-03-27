@@ -6,18 +6,22 @@ const PLACE_GRID_SIZE = 12;
 const PLACED_OBJECT_BASE_SIZE = 40;
 const PLACED_OBJECT_SCALE_UP = 2;
 const DIRT_WIDTH_RATIO = 0.8;
-const DIRT_HEIGHT_RATIO = 0.8;
-const GRASS_BASE_COLORS = ["#6eb35b", "#67a853", "#5f9d4d"];
+const DIRT_HEIGHT_RATIO = 0.5;
+const DIRT_VERTICAL_OFFSET_RATIO = 0.03;
+const GRASS_BASE_COLORS = ["#a5d267", "#90c54f", "#79b142"];
 const GRASS_VARIATION_COLORS = {
-  light: "#7fc567",
-  mid: "#74b35d",
-  dark: "#568c43",
+  light: "#b8df75",
+  mid: "#96cb58",
+  dark: "#679a3c",
 };
+const GRASS_FLOWER_COLORS = ["#f7efc7", "#f2cde6", "#c8dcff"];
+const DIRT_BASE_COLORS = ["#e0bf72", "#d2a554", "#c68d39"];
 const DIRT_VARIATION_COLORS = {
-  light: "#d0ab7c",
-  mid: "#c39a6b",
-  dark: "#af8357",
+  light: "#ebce8c",
+  mid: "#d7ad63",
+  dark: "#b67d2d",
 };
+const DIRT_PEBBLE_COLORS = ["#e6cca0", "#ccb17f", "#a58b64"];
 const FARM_OBJECTS = [
   {
     id: "barn",
@@ -73,10 +77,52 @@ const state = {
   },
 };
 let activePlacementDrag = null;
+const colorCache = new Map();
 
 function hash2D(x, y) {
   const value = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123;
   return value - Math.floor(value);
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function parseHexColor(hexColor) {
+  const cached = colorCache.get(hexColor);
+  if (cached) {
+    return cached;
+  }
+
+  const normalized = hexColor.replace("#", "");
+  const color = {
+    r: Number.parseInt(normalized.slice(0, 2), 16),
+    g: Number.parseInt(normalized.slice(2, 4), 16),
+    b: Number.parseInt(normalized.slice(4, 6), 16),
+  };
+
+  colorCache.set(hexColor, color);
+  return color;
+}
+
+function mixColors(colorA, colorB, amount) {
+  const start = parseHexColor(colorA);
+  const end = parseHexColor(colorB);
+  const blend = clamp(amount, 0, 1);
+  const r = Math.round(start.r + (end.r - start.r) * blend);
+  const g = Math.round(start.g + (end.g - start.g) * blend);
+  const b = Math.round(start.b + (end.b - start.b) * blend);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function samplePalette(colors, amount) {
+  if (colors.length === 1) {
+    return colors[0];
+  }
+
+  const blend = clamp(amount, 0, 1) * (colors.length - 1);
+  const index = Math.min(colors.length - 2, Math.floor(blend));
+  return mixColors(colors[index], colors[index + 1], blend - index);
 }
 
 function getViewAndCanvas() {
@@ -160,45 +206,253 @@ function fillVariationLayer(ctx, area, options) {
   ctx.restore();
 }
 
+function drawGrassTufts(ctx, area) {
+  const spacing = Math.max(18, Math.round(Math.min(area.width, area.height) * 0.03));
+  const cols = Math.ceil(area.width / spacing) + 1;
+  const rows = Math.ceil(area.height / spacing) + 1;
+
+  ctx.save();
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const seed = hash2D(col + 131, row + 173);
+      if (seed < 0.44) {
+        continue;
+      }
+
+      const x = area.x + col * spacing + (hash2D(col + 191, row + 211) - 0.5) * spacing;
+      const y = area.y + row * spacing + (hash2D(col + 227, row + 239) - 0.5) * spacing;
+      const bladeCount = 2 + Math.floor(hash2D(col + 251, row + 263) * 3);
+
+      for (let bladeIndex = 0; bladeIndex < bladeCount; bladeIndex += 1) {
+        const bladeHeight = 4 + hash2D(bladeIndex + col * 3 + 281, row + 307) * 8;
+        const bladeWidth = 1 + Math.floor(hash2D(bladeIndex + col * 5 + 331, row + 347) * 2);
+        const bladeX = x + (bladeIndex - (bladeCount - 1) / 2) * 3;
+        const bladeY = y - bladeHeight;
+
+        ctx.globalAlpha = 0.1 + hash2D(bladeIndex + col * 7 + 367, row + 389) * 0.12;
+        ctx.fillStyle =
+          hash2D(bladeIndex + col * 11 + 401, row + 419) > 0.52
+            ? GRASS_VARIATION_COLORS.light
+            : GRASS_VARIATION_COLORS.dark;
+        ctx.fillRect(bladeX, bladeY, bladeWidth, bladeHeight);
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawGrassFlowers(ctx, area) {
+  const spacing = Math.max(52, Math.round(Math.min(area.width, area.height) * 0.09));
+  const cols = Math.ceil(area.width / spacing) + 1;
+  const rows = Math.ceil(area.height / spacing) + 1;
+
+  ctx.save();
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const seed = hash2D(col + 443, row + 457);
+      if (seed < 0.84) {
+        continue;
+      }
+
+      const x = area.x + col * spacing + hash2D(col + 461, row + 479) * spacing;
+      const y = area.y + row * spacing + hash2D(col + 487, row + 503) * spacing;
+      const flowerColor = GRASS_FLOWER_COLORS[Math.floor(seed * GRASS_FLOWER_COLORS.length) % GRASS_FLOWER_COLORS.length];
+
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle = flowerColor;
+      ctx.fillRect(x, y, 2, 2);
+      ctx.fillRect(x + 3, y + 1, 2, 2);
+      ctx.fillRect(x + 1, y + 3, 2, 2);
+    }
+  }
+
+  ctx.restore();
+}
+
 function getCentralDirtArea(width, height) {
   const dirtWidth = width * DIRT_WIDTH_RATIO;
   const dirtHeight = height * DIRT_HEIGHT_RATIO;
 
   return {
     x: (width - dirtWidth) / 2,
-    y: (height - dirtHeight) / 2,
+    y: (height - dirtHeight) / 2 + height * DIRT_VERTICAL_OFFSET_RATIO,
     width: dirtWidth,
     height: dirtHeight,
   };
 }
 
+function getDirtSpan(dirtArea, normalizedY, expand = 0) {
+  const centeredDistance = Math.abs(normalizedY - 0.5) * 2;
+  const roundedProfile = Math.pow(Math.max(0, 1 - centeredDistance), 0.55);
+  const endInset = (1 - roundedProfile) * dirtArea.width * 0.18;
+  const leftWave =
+    Math.sin(normalizedY * Math.PI * 2.4 + 0.4) * dirtArea.width * 0.028 +
+    Math.sin(normalizedY * Math.PI * 6.1 + 1.2) * dirtArea.width * 0.012 +
+    (hash2D(41, Math.floor(normalizedY * 19) + 17) - 0.5) * dirtArea.width * 0.032;
+  const rightWave =
+    Math.sin(normalizedY * Math.PI * 2.1 + 1.1) * dirtArea.width * 0.024 +
+    Math.sin(normalizedY * Math.PI * 5.7 + 2.2) * dirtArea.width * 0.014 +
+    (hash2D(73, Math.floor(normalizedY * 23) + 29) - 0.5) * dirtArea.width * 0.03;
+  const leftNotch =
+    Math.exp(-Math.pow((normalizedY - 0.24) / 0.11, 2)) * dirtArea.width * 0.07 +
+    Math.exp(-Math.pow((normalizedY - 0.79) / 0.1, 2)) * dirtArea.width * 0.04;
+  const rightNotch =
+    Math.exp(-Math.pow((normalizedY - 0.36) / 0.12, 2)) * dirtArea.width * 0.05 +
+    Math.exp(-Math.pow((normalizedY - 0.72) / 0.11, 2)) * dirtArea.width * 0.06;
+
+  const leftInset = clamp(
+    dirtArea.width * 0.035 + endInset + leftNotch + leftWave,
+    dirtArea.width * 0.02,
+    dirtArea.width * 0.42,
+  );
+  const rightInset = clamp(
+    dirtArea.width * 0.03 + endInset + rightNotch + rightWave,
+    dirtArea.width * 0.02,
+    dirtArea.width * 0.42,
+  );
+
+  return {
+    x: dirtArea.x + leftInset - expand,
+    width: Math.max(dirtArea.width * 0.18, dirtArea.width - leftInset - rightInset + expand * 2),
+  };
+}
+
 function drawSoftDirtBorder(ctx, dirtArea) {
-  const edgeSize = Math.max(16, Math.round(Math.min(dirtArea.width, dirtArea.height) * 0.035));
+  const stripHeight = Math.max(5, Math.round(dirtArea.height * 0.03));
+  const edgeSize = Math.max(18, Math.round(Math.min(dirtArea.width, dirtArea.height) * 0.045));
   const layers = [
-    { expand: edgeSize, color: "#c49868", alpha: 0.16 },
-    { expand: edgeSize * 0.58, color: "#bb8d5f", alpha: 0.13 },
-    { expand: edgeSize * 0.22, color: "#b68458", alpha: 0.1 },
+    { expand: edgeSize, color: "#ddc06f", alpha: 0.16 },
+    { expand: edgeSize * 0.62, color: "#cfaa56", alpha: 0.13 },
+    { expand: edgeSize * 0.26, color: "#c18f3e", alpha: 0.1 },
   ];
 
   for (const layer of layers) {
-    ctx.globalAlpha = layer.alpha;
-    ctx.fillStyle = layer.color;
-    ctx.fillRect(
-      dirtArea.x - layer.expand,
-      dirtArea.y - layer.expand,
-      dirtArea.width + layer.expand * 2,
-      dirtArea.height + layer.expand * 2,
-    );
+    for (let y = 0; y < dirtArea.height; y += stripHeight) {
+      const normalizedY = (y + stripHeight / 2) / dirtArea.height;
+      const span = getDirtSpan(dirtArea, normalizedY, layer.expand);
+
+      ctx.globalAlpha = layer.alpha;
+      ctx.fillStyle = layer.color;
+      ctx.fillRect(
+        span.x,
+        dirtArea.y + y - layer.expand * 0.22,
+        span.width,
+        stripHeight + layer.expand * 0.44,
+      );
+    }
   }
 
   ctx.globalAlpha = 1;
 }
 
+function drawDirtBody(ctx, dirtArea) {
+  const stripHeight = Math.max(4, Math.round(dirtArea.height * 0.022));
+
+  for (let y = 0; y < dirtArea.height; y += stripHeight) {
+    const normalizedY = (y + stripHeight / 2) / dirtArea.height;
+    const span = getDirtSpan(dirtArea, normalizedY);
+
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = samplePalette(DIRT_BASE_COLORS, normalizedY * 0.85 + 0.08);
+    ctx.fillRect(span.x, dirtArea.y + y, span.width, stripHeight + 1);
+  }
+}
+
+function drawDirtTexture(ctx, dirtArea) {
+  const cellHeight = Math.max(10, Math.round(dirtArea.height * 0.08));
+  const cellWidth = Math.max(16, Math.round(dirtArea.width * 0.045));
+  const rows = Math.ceil(dirtArea.height / (cellHeight * 0.66)) + 1;
+
+  ctx.save();
+
+  for (let row = 0; row < rows; row += 1) {
+    const y = row * cellHeight * 0.66;
+    const normalizedY = clamp((y + cellHeight / 2) / dirtArea.height, 0, 1);
+    const span = getDirtSpan(dirtArea, normalizedY);
+    const cols = Math.ceil(span.width / cellWidth) + 1;
+
+    for (let col = 0; col < cols; col += 1) {
+      const toneNoise = hash2D(col + 521, row + 547);
+      const patchX = span.x + col * cellWidth + (hash2D(col + 557, row + 563) - 0.5) * cellWidth;
+      const patchY = dirtArea.y + y + (hash2D(col + 571, row + 587) - 0.5) * cellHeight;
+      const patchWidth = cellWidth * (0.75 + hash2D(col + 593, row + 601) * 0.8);
+      const patchHeight = cellHeight * (0.5 + hash2D(col + 607, row + 613) * 0.8);
+
+      if (patchX + patchWidth < span.x || patchX > span.x + span.width) {
+        continue;
+      }
+
+      if (toneNoise > 0.78) {
+        ctx.globalAlpha = 0.14 + (toneNoise - 0.78) * 0.32;
+        ctx.fillStyle = DIRT_VARIATION_COLORS.light;
+        ctx.fillRect(patchX, patchY, patchWidth, patchHeight);
+      } else if (toneNoise < 0.2) {
+        ctx.globalAlpha = 0.11 + (0.2 - toneNoise) * 0.25;
+        ctx.fillStyle = DIRT_VARIATION_COLORS.dark;
+        ctx.fillRect(patchX, patchY, patchWidth, patchHeight);
+      }
+
+      if (hash2D(col + 617, row + 631) > 0.92) {
+        const pebbleSize = 3 + Math.floor(hash2D(col + 641, row + 653) * 4);
+        const pebbleColor =
+          DIRT_PEBBLE_COLORS[Math.floor(hash2D(col + 659, row + 673) * DIRT_PEBBLE_COLORS.length)];
+        ctx.globalAlpha = 0.42;
+        ctx.fillStyle = pebbleColor;
+        ctx.fillRect(
+          patchX + patchWidth * 0.25,
+          patchY + patchHeight * 0.3,
+          pebbleSize,
+          Math.max(2, pebbleSize - 1),
+        );
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawDirtEdgeGrass(ctx, dirtArea) {
+  const spacing = Math.max(14, Math.round(dirtArea.height * 0.06));
+  const rows = Math.ceil(dirtArea.height / spacing) + 1;
+
+  ctx.save();
+
+  for (let row = 0; row < rows; row += 1) {
+    const normalizedY = clamp((row * spacing + spacing / 2) / dirtArea.height, 0, 1);
+    const span = getDirtSpan(dirtArea, normalizedY);
+    const baseY = dirtArea.y + row * spacing + (hash2D(row + 683, 701) - 0.5) * spacing * 0.35;
+
+    for (const edgeX of [span.x + 1, span.x + span.width - 5]) {
+      const seed = hash2D(row + Math.round(edgeX), 719);
+      if (seed < 0.28) {
+        continue;
+      }
+
+      const bladeCount = 2 + Math.floor(seed * 3);
+      for (let bladeIndex = 0; bladeIndex < bladeCount; bladeIndex += 1) {
+        const bladeHeight = 5 + hash2D(bladeIndex + row + 733, 743) * 8;
+        const bladeX = edgeX + bladeIndex * 2;
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle =
+          hash2D(bladeIndex + row + 751, 761) > 0.5
+            ? GRASS_VARIATION_COLORS.light
+            : GRASS_VARIATION_COLORS.dark;
+        ctx.fillRect(bladeX, baseY - bladeHeight, 2, bladeHeight);
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
 function drawBackground(ctx, width, height) {
   const fullArea = { x: 0, y: 0, width, height };
   const dirtArea = getCentralDirtArea(width, height);
-  const grassCellSize = Math.max(22, Math.round(Math.min(width, height) * 0.045));
-  const dirtCellSize = Math.max(26, Math.round(Math.min(width, height) * 0.055));
+  const grassCellSize = Math.max(26, Math.round(Math.min(width, height) * 0.05));
+  const grassDetailCellSize = Math.max(12, Math.round(Math.min(width, height) * 0.023));
 
   ctx.imageSmoothingEnabled = true;
 
@@ -207,19 +461,26 @@ function drawBackground(ctx, width, height) {
     variationColors: GRASS_VARIATION_COLORS,
     cellSize: grassCellSize,
     seedOffset: 3,
-    alphaScale: 0.85,
+    alphaScale: 0.9,
   });
 
+  fillVariationLayer(ctx, fullArea, {
+    variationColors: {
+      light: "#c6e684",
+      mid: "#8fca56",
+      dark: "#5f9238",
+    },
+    cellSize: grassDetailCellSize,
+    seedOffset: 9,
+    alphaScale: 0.42,
+  });
+
+  drawGrassTufts(ctx, fullArea);
+  drawGrassFlowers(ctx, fullArea);
   drawSoftDirtBorder(ctx, dirtArea);
-
-  fillVariationLayer(ctx, dirtArea, {
-    baseColor: "#c59c6d",
-    gradientColors: ["#cfab7f", "#c39b6d", "#bb905f"],
-    variationColors: DIRT_VARIATION_COLORS,
-    cellSize: dirtCellSize,
-    seedOffset: 11,
-    alphaScale: 0.55,
-  });
+  drawDirtBody(ctx, dirtArea);
+  drawDirtTexture(ctx, dirtArea);
+  drawDirtEdgeGrass(ctx, dirtArea);
 }
 
 function getUIRefs() {
