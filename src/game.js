@@ -3,15 +3,52 @@ const BACKGROUND_ID = "farm-background";
 const TOOLBAR_ID = "toolbar-buttons";
 const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
-const PLACED_OBJECT_SIZE = 40;
+const PLACED_OBJECT_BASE_SIZE = 40;
+const PLACED_OBJECT_SCALE_UP = 2;
 
 const FARM_OBJECTS = [
-  { id: "barn", label: "Barn", imageSrc: "./src/assets/sprites/barn.png" },
-  { id: "fence", label: "Fence", imageSrc: "./src/assets/sprites/fence.png" },
-  { id: "hay-bale", label: "Hay Bale", imageSrc: "./src/assets/sprites/hay-bale.png" },
-  { id: "cow", label: "Cow", imageSrc: "./src/assets/sprites/cow.png" },
-  { id: "chicken", label: "Chicken", imageSrc: "./src/assets/sprites/chicken.png" },
-  { id: "apple-tree", label: "Apple Tree", imageSrc: "./src/assets/sprites/apple-tree.png" },
+  {
+    id: "barn",
+    label: "Barn",
+    imageSrc: "./src/assets/sprites/barn.png",
+    placedWidth: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 1.35,
+    placedHeight: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 1.2,
+  },
+  {
+    id: "fence",
+    label: "Fence",
+    imageSrc: "./src/assets/sprites/fence.png",
+    placedWidth: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 1.45,
+    placedHeight: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 0.7,
+  },
+  {
+    id: "hay-bale",
+    label: "Hay Bale",
+    imageSrc: "./src/assets/sprites/hay-bale.png",
+    placedWidth: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 0.9,
+    placedHeight: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 0.8,
+  },
+  {
+    id: "cow",
+    label: "Cow",
+    imageSrc: "./src/assets/sprites/cow.png",
+    placedWidth: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 1.1,
+    placedHeight: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 0.95,
+  },
+  {
+    id: "chicken",
+    label: "Chicken",
+    imageSrc: "./src/assets/sprites/chicken.png",
+    placedWidth: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 0.7,
+    placedHeight: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 0.65,
+  },
+  {
+    id: "apple-tree",
+    label: "Apple Tree",
+    imageSrc: "./src/assets/sprites/apple-tree.png",
+    placedWidth: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 1.2,
+    placedHeight: PLACED_OBJECT_BASE_SIZE * PLACED_OBJECT_SCALE_UP * 1.5,
+  },
 ];
 
 const state = {
@@ -261,7 +298,7 @@ function renderPlacedObject(placement) {
   const { placementLayer } = getUIRefs();
   const objectEl = document.createElement("div");
   objectEl.className = "placed-object";
-  
+
   const img = document.createElement("img");
   img.src = placement.imageSrc;
   img.alt = "";
@@ -270,30 +307,38 @@ function renderPlacedObject(placement) {
   img.style.height = "100%";
   img.style.objectFit = "contain";
   img.style.imageRendering = "pixelated";
-  
+
   objectEl.appendChild(img);
   objectEl.setAttribute("aria-label", `${placement.label} placed`);
   objectEl.style.left = `${placement.x}px`;
   objectEl.style.top = `${placement.y}px`;
+  objectEl.style.width = `${placement.width}px`;
+  objectEl.style.height = `${placement.height}px`;
   placementLayer.appendChild(objectEl);
 }
 
-function getPlacementFootprint(centerX, centerY) {
-  const halfSize = PLACED_OBJECT_SIZE / 2;
+function getPlacementFootprint(centerX, centerY, width, height) {
+  const halfWidth = width / 2;
+  const halfHeight = height / 2;
 
   return {
-    left: centerX - halfSize,
-    right: centerX + halfSize,
-    top: centerY - halfSize,
-    bottom: centerY + halfSize,
+    left: centerX - halfWidth,
+    right: centerX + halfWidth,
+    top: centerY - halfHeight,
+    bottom: centerY + halfHeight,
   };
 }
 
-function overlapsExistingPlacement(centerX, centerY) {
-  const nextFootprint = getPlacementFootprint(centerX, centerY);
+function overlapsExistingPlacement(centerX, centerY, width, height) {
+  const nextFootprint = getPlacementFootprint(centerX, centerY, width, height);
 
   return state.placements.some((placement) => {
-    const existingFootprint = getPlacementFootprint(placement.x, placement.y);
+    const existingFootprint = getPlacementFootprint(
+      placement.x,
+      placement.y,
+      placement.width,
+      placement.height,
+    );
     return !(
       nextFootprint.right <= existingFootprint.left ||
       nextFootprint.left >= existingFootprint.right ||
@@ -303,23 +348,24 @@ function overlapsExistingPlacement(centerX, centerY) {
   });
 }
 
-function getSnappedPlacement(clientX, clientY) {
+function getSnappedPlacement(clientX, clientY, width, height) {
   const { view } = getViewAndCanvas();
   const bounds = view.getBoundingClientRect();
   const relativeX = clientX - bounds.left;
   const relativeY = clientY - bounds.top;
   const snappedX = Math.round(relativeX / PLACE_GRID_SIZE) * PLACE_GRID_SIZE;
   const snappedY = Math.round(relativeY / PLACE_GRID_SIZE) * PLACE_GRID_SIZE;
-  const halfSize = PLACED_OBJECT_SIZE / 2;
+  const halfWidth = width / 2;
+  const halfHeight = height / 2;
 
   return {
     x: snappedX,
     y: snappedY,
     isInsideBounds:
-      snappedX >= halfSize &&
-      snappedX <= bounds.width - halfSize &&
-      snappedY >= halfSize &&
-      snappedY <= bounds.height - halfSize,
+      snappedX >= halfWidth &&
+      snappedX <= bounds.width - halfWidth &&
+      snappedY >= halfHeight &&
+      snappedY <= bounds.height - halfHeight,
   };
 }
 
@@ -329,12 +375,24 @@ function placeObject(clientX, clientY) {
     return false;
   }
 
-  const placement = getSnappedPlacement(clientX, clientY);
+  const placement = getSnappedPlacement(
+    clientX,
+    clientY,
+    activeObject.placedWidth,
+    activeObject.placedHeight,
+  );
   if (!placement.isInsideBounds) {
     return false;
   }
 
-  if (overlapsExistingPlacement(placement.x, placement.y)) {
+  if (
+    overlapsExistingPlacement(
+      placement.x,
+      placement.y,
+      activeObject.placedWidth,
+      activeObject.placedHeight,
+    )
+  ) {
     return false;
   }
 
@@ -344,6 +402,8 @@ function placeObject(clientX, clientY) {
     imageSrc: activeObject.imageSrc,
     x: placement.x,
     y: placement.y,
+    width: activeObject.placedWidth,
+    height: activeObject.placedHeight,
   };
 
   state.placements.push(placedObject);

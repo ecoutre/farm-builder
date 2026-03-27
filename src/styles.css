@@ -38,8 +38,6 @@ body {
 
 .placed-object {
   position: absolute;
-  width: 40px;
-  height: 40px;
   display: grid;
   place-items: center;
   transform: translate(-50%, -50%);
