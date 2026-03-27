@@ -5,6 +5,7 @@ const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
 const PLACED_OBJECT_BASE_SIZE = 40;
 const PLACED_OBJECT_SCALE_UP = 2;
+const SKY_HEIGHT_RATIO = 0.36;
 const FARM_OBJECTS = [
   {
     id: "barn",
@@ -285,6 +286,7 @@ function setActiveObject(objectId) {
   if (objectId == null) {
     state.activeObjectId = null;
     updateActiveUI();
+    hidePlacementPreview();
     return;
   }
 
@@ -352,7 +354,68 @@ function renderPlacedObject(placement) {
   objectEl.style.top = `${placement.y}px`;
   objectEl.style.width = `${placement.width}px`;
   objectEl.style.height = `${placement.height}px`;
+  placement.element = objectEl;
+  objectEl.addEventListener("pointerdown", (event) =>
+    startPlacementDrag(placement, objectEl, event),
+  );
+  objectEl.addEventListener("pointermove", handlePlacementDragMove);
+  objectEl.addEventListener("pointerup", endPlacementDrag);
+  objectEl.addEventListener("pointercancel", endPlacementDrag);
+  objectEl.addEventListener("lostpointercapture", endPlacementDrag);
   placementLayer.appendChild(objectEl);
+}
+
+function ensurePreviewObject() {
+  const { placementLayer } = getUIRefs();
+  let previewEl = placementLayer.querySelector(".placement-preview");
+
+  if (!previewEl) {
+    previewEl = document.createElement("div");
+    previewEl.className = "placed-object placement-preview";
+    previewEl.setAttribute("aria-hidden", "true");
+
+    const img = document.createElement("img");
+    img.alt = "";
+    img.draggable = false;
+    img.style.width = "100%";
+    img.style.height = "100%";
+    img.style.objectFit = "contain";
+    img.style.imageRendering = "pixelated";
+
+    previewEl.appendChild(img);
+    placementLayer.appendChild(previewEl);
+  }
+
+  return previewEl;
+}
+
+function syncPreviewObject() {
+  const activeObject = getObjectById(state.activeObjectId);
+  const previewEl = ensurePreviewObject();
+  const img = previewEl.querySelector("img");
+
+  if (!activeObject || !img) {
+    hidePlacementPreview();
+    return;
+  }
+
+  img.src = activeObject.imageSrc;
+  previewEl.style.width = `${activeObject.placedWidth}px`;
+  previewEl.style.height = `${activeObject.placedHeight}px`;
+}
+
+function hidePlacementPreview() {
+  const previewEl = ensurePreviewObject();
+  previewEl.classList.remove("is-visible", "is-blocked");
+}
+
+function updatePlacedObjectPosition(placement, x = placement.x, y = placement.y) {
+  if (!placement.element) {
+    return;
+  }
+
+  placement.element.style.left = `${x}px`;
+  placement.element.style.top = `${y}px`;
 }
 
 function getPlacementFootprint(centerX, centerY, width, height) {
@@ -367,10 +430,20 @@ function getPlacementFootprint(centerX, centerY, width, height) {
   };
 }
 
-function overlapsExistingPlacement(centerX, centerY, width, height) {
+function overlapsExistingPlacement(
+  centerX,
+  centerY,
+  width,
+  height,
+  ignoredPlacement = null,
+) {
   const nextFootprint = getPlacementFootprint(centerX, centerY, width, height);
 
   return state.placements.some((placement) => {
+    if (placement === ignoredPlacement) {
+      return false;
+    }
+
     const existingFootprint = getPlacementFootprint(
       placement.x,
       placement.y,
@@ -386,7 +459,14 @@ function overlapsExistingPlacement(centerX, centerY, width, height) {
   });
 }
 
-function getSnappedPlacement(clientX, clientY, width, height) {
+function getSnappedPlacement(
+  clientX,
+  clientY,
+  width,
+  height,
+  offsetX = 0,
+  offsetY = 0,
+) {
   const { view } = getViewAndCanvas();
   const bounds = view.getBoundingClientRect();
   const relativeX = clientX - bounds.left - offsetX;
@@ -395,15 +475,20 @@ function getSnappedPlacement(clientX, clientY, width, height) {
   const snappedY = Math.round(relativeY / PLACE_GRID_SIZE) * PLACE_GRID_SIZE;
   const halfWidth = width / 2;
   const halfHeight = height / 2;
+  const farmTop = getFarmTop(bounds.height);
+  const isInsideBounds =
+    snappedX >= halfWidth &&
+    snappedX <= bounds.width - halfWidth &&
+    snappedY >= halfHeight &&
+    snappedY <= bounds.height - halfHeight;
+  const isInFarmArea = snappedY >= farmTop + halfHeight;
 
   return {
     x: snappedX,
     y: snappedY,
-    isInsideBounds:
-      snappedX >= halfWidth &&
-      snappedX <= bounds.width - halfWidth &&
-      snappedY >= halfHeight &&
-      snappedY <= bounds.height - halfHeight,
+    isInsideBounds,
+    isInFarmArea,
+    isPlaceable: isInsideBounds && isInFarmArea,
   };
 }
 
@@ -415,9 +500,20 @@ function updatePlacementPreview(clientX, clientY) {
   }
 
   const previewEl = ensurePreviewObject();
-  const placement = getSnappedPlacement(clientX, clientY);
+  const placement = getSnappedPlacement(
+    clientX,
+    clientY,
+    activeObject.placedWidth,
+    activeObject.placedHeight,
+  );
   const isBlocked =
-    placement.isPlaceable && overlapsExistingPlacement(placement.x, placement.y);
+    placement.isPlaceable &&
+    overlapsExistingPlacement(
+      placement.x,
+      placement.y,
+      activeObject.placedWidth,
+      activeObject.placedHeight,
+    );
 
   previewEl.style.left = `${placement.x}px`;
   previewEl.style.top = `${placement.y}px`;
@@ -437,7 +533,7 @@ function placeObject(clientX, clientY) {
     activeObject.placedWidth,
     activeObject.placedHeight,
   );
-  if (!placement.isInsideBounds) {
+  if (!placement.isPlaceable) {
     return false;
   }
 
@@ -504,6 +600,8 @@ function handlePlacementDragMove(event) {
   const snappedPlacement = getSnappedPlacement(
     event.clientX,
     event.clientY,
+    activePlacementDrag.placement.width,
+    activePlacementDrag.placement.height,
     activePlacementDrag.offsetX,
     activePlacementDrag.offsetY,
   );
@@ -511,10 +609,12 @@ function handlePlacementDragMove(event) {
   activePlacementDrag.previewX = snappedPlacement.x;
   activePlacementDrag.previewY = snappedPlacement.y;
   activePlacementDrag.isValidDrop =
-    snappedPlacement.isInsideBounds &&
+    snappedPlacement.isPlaceable &&
     !overlapsExistingPlacement(
       snappedPlacement.x,
       snappedPlacement.y,
+      activePlacementDrag.placement.width,
+      activePlacementDrag.placement.height,
       activePlacementDrag.placement,
     );
 
