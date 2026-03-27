@@ -166,8 +166,8 @@ body {
 }
 
 .farm-object-button__icon {
-  width: 42px;
-  height: 42px;
+  width: 46px;
+  height: 46px;
   border: 2px solid rgba(0, 0, 0, 0.45);
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.16);
@@ -233,8 +233,8 @@ body {
   }
 
   .farm-object-button__icon {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     font-size: 1.55rem;
   }
 }
