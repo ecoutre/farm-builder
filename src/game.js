@@ -26,7 +26,7 @@ const state = {
 };
 let activePlacementDrag = null;
 const SOURCE_TILE_SIZE = 32;
-const TILE_SCALE = 3;
+const TILE_SCALE = 2;
 const TILE_DRAW_SIZE = SOURCE_TILE_SIZE * TILE_SCALE;
 const GRASS_PALETTE = ["#5e9345", "#679c4b", "#70a852", "#7eb760", "#8bc96b"];
 let cachedGrassTiles = null;
@@ -195,7 +195,7 @@ function drawBackground(ctx, width, height) {
   const tiles = getGrassTiles();
   const cols = Math.ceil(width / TILE_DRAW_SIZE);
   const rows = Math.ceil(height / TILE_DRAW_SIZE);
-  ctx.imageSmoothingEnabled = false;
+  ctx.imageSmoothingEnabled = true;
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, farmTop, width, Math.max(0, height - farmTop));
