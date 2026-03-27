@@ -16,7 +16,7 @@ const FARM_OBJECTS = [
 ];
 
 const state = {
-  activeObjectId: FARM_OBJECTS[0].id,
+  activeObjectId: null,
   placements: [],
   preview: {
     clientX: 0,
@@ -247,6 +247,12 @@ function updateActiveUI() {
 }
 
 function setActiveObject(objectId) {
+  if (objectId == null) {
+    state.activeObjectId = null;
+    updateActiveUI();
+    return;
+  }
+
   const activeObject = getObjectById(objectId);
   if (!activeObject) {
     return;
@@ -280,7 +286,11 @@ function renderToolbar() {
         <img src="${farmObject.imageSrc}" alt="" draggable="false" style="width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated;" />
       </span>
     `;
-    button.addEventListener("click", () => setActiveObject(farmObject.id));
+    button.addEventListener("click", () => {
+      const nextObjectId =
+        state.activeObjectId === farmObject.id ? null : farmObject.id;
+      setActiveObject(nextObjectId);
+    });
     slot.appendChild(button);
     toolbarButtons.appendChild(slot);
   }
