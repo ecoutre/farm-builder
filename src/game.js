@@ -380,12 +380,12 @@ function getDirtSpan(dirtArea, normalizedY, expand = 0) {
 }
 
 function drawSoftDirtBorder(ctx, dirtArea) {
-  const stripHeight = Math.max(5, Math.round(dirtArea.height * 0.03));
-  const edgeSize = Math.max(18, Math.round(Math.min(dirtArea.width, dirtArea.height) * 0.045));
+  const stripHeight = Math.max(2, Math.round(dirtArea.height * 0.012));
+  const edgeSize = Math.max(6, Math.round(Math.min(dirtArea.width, dirtArea.height) * 0.016));
   const layers = [
-    { expand: edgeSize, color: "#ddc06f", alpha: 0.16 },
-    { expand: edgeSize * 0.62, color: "#cfaa56", alpha: 0.13 },
-    { expand: edgeSize * 0.26, color: "#c18f3e", alpha: 0.1 },
+    { expand: edgeSize, color: "#dcbf72", alpha: 0.09 },
+    { expand: edgeSize * 0.5, color: "#cfa555", alpha: 0.08 },
+    { expand: edgeSize * 0.2, color: "#ba8735", alpha: 0.06 },
   ];
 
   for (const layer of layers) {
@@ -408,21 +408,33 @@ function drawSoftDirtBorder(ctx, dirtArea) {
 }
 
 function drawDirtBody(ctx, dirtArea) {
-  const stripHeight = Math.max(4, Math.round(dirtArea.height * 0.022));
+  const stripHeight = 2;
+  const pixelWidth = 3;
 
   for (let y = 0; y < dirtArea.height; y += stripHeight) {
     const normalizedY = (y + stripHeight / 2) / dirtArea.height;
     const span = getDirtSpan(dirtArea, normalizedY);
+    const cols = Math.ceil(span.width / pixelWidth) + 1;
 
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = samplePalette(DIRT_BASE_COLORS, normalizedY * 0.85 + 0.08);
-    ctx.fillRect(span.x, dirtArea.y + y, span.width, stripHeight + 1);
+    for (let col = 0; col < cols; col += 1) {
+      const seed = hash2D(col + 887, y + 919);
+      const colorAmount = clamp(seed * 0.82 + hash2D(col + 929, y + 941) * 0.18, 0, 1);
+      const blockX = Math.round(span.x + col * pixelWidth);
+      const blockWidth = Math.min(pixelWidth, Math.ceil(span.x + span.width - blockX));
+      if (blockWidth <= 0) {
+        continue;
+      }
+
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = samplePalette(DIRT_BASE_COLORS, colorAmount);
+      ctx.fillRect(blockX, dirtArea.y + y, blockWidth, stripHeight);
+    }
   }
 }
 
 function drawDirtTexture(ctx, dirtArea) {
-  const cellHeight = Math.max(5, Math.round(dirtArea.height * 0.028));
-  const cellWidth = Math.max(5, Math.round(dirtArea.width * 0.012));
+  const cellHeight = 3;
+  const cellWidth = 3;
   const rows = Math.ceil(dirtArea.height / cellHeight) + 1;
 
   ctx.save();
@@ -441,32 +453,32 @@ function drawDirtTexture(ctx, dirtArea) {
       const patchY = Math.round(
         dirtArea.y + y + (hash2D(col + 571, row + 587) - 0.5) * cellHeight * 0.65,
       );
-      const patchWidth = 1 + Math.floor(hash2D(col + 593, row + 601) * 3);
-      const patchHeight = 1 + Math.floor(hash2D(col + 607, row + 613) * 3);
+      const patchWidth = 1 + Math.floor(hash2D(col + 593, row + 601) * 2);
+      const patchHeight = 1 + Math.floor(hash2D(col + 607, row + 613) * 2);
 
       if (patchX + patchWidth < span.x || patchX > span.x + span.width) {
         continue;
       }
 
-      if (toneNoise > 0.73) {
-        ctx.globalAlpha = 0.08 + (toneNoise - 0.73) * 0.16;
+      if (toneNoise > 0.74) {
+        ctx.globalAlpha = 0.07 + (toneNoise - 0.74) * 0.13;
         ctx.fillStyle = DIRT_VARIATION_COLORS.light;
         ctx.fillRect(patchX, patchY, patchWidth, patchHeight);
-      } else if (toneNoise < 0.27) {
-        ctx.globalAlpha = 0.07 + (0.27 - toneNoise) * 0.14;
+      } else if (toneNoise < 0.24) {
+        ctx.globalAlpha = 0.06 + (0.24 - toneNoise) * 0.12;
         ctx.fillStyle = DIRT_VARIATION_COLORS.dark;
         ctx.fillRect(patchX, patchY, patchWidth, patchHeight);
-      } else if (toneNoise > 0.56 && toneNoise < 0.63) {
-        ctx.globalAlpha = 0.045;
+      } else if (toneNoise > 0.49 && toneNoise < 0.57) {
+        ctx.globalAlpha = 0.038;
         ctx.fillStyle = DIRT_VARIATION_COLORS.mid;
         ctx.fillRect(patchX, patchY, 1, 1);
       }
 
-      if (hash2D(col + 617, row + 631) > 0.968) {
+      if (hash2D(col + 617, row + 631) > 0.985) {
         const pebbleSize = 2 + Math.floor(hash2D(col + 641, row + 653) * 2);
         const pebbleColor =
           DIRT_PEBBLE_COLORS[Math.floor(hash2D(col + 659, row + 673) * DIRT_PEBBLE_COLORS.length)];
-        ctx.globalAlpha = 0.32;
+        ctx.globalAlpha = 0.24;
         ctx.fillStyle = pebbleColor;
         ctx.fillRect(
           patchX + Math.floor(patchWidth * 0.25),
@@ -481,8 +493,44 @@ function drawDirtTexture(ctx, dirtArea) {
   ctx.restore();
 }
 
+function drawDirtTransitionPixels(ctx, dirtArea) {
+  const rowStep = 2;
+  const offsets = [-3, -2, -1, 0, 1, 2];
+
+  ctx.save();
+
+  for (let y = 0; y < dirtArea.height; y += rowStep) {
+    const normalizedY = clamp((y + rowStep / 2) / dirtArea.height, 0, 1);
+    const span = getDirtSpan(dirtArea, normalizedY);
+    const boundaryY = Math.round(dirtArea.y + y);
+
+    for (const side of ["left", "right"]) {
+      const boundaryX = side === "left" ? Math.round(span.x) : Math.round(span.x + span.width - 1);
+
+      for (const offset of offsets) {
+        const seed = hash2D(boundaryX + offset * 3 + (side === "left" ? 977 : 991), y + 1009);
+        if (seed < 0.68) {
+          continue;
+        }
+
+        const x = side === "left" ? boundaryX + offset : boundaryX - offset;
+        const isGrassSide = offset < 0;
+        const color = isGrassSide
+          ? (seed > 0.86 ? GRASS_VARIATION_COLORS.light : GRASS_VARIATION_COLORS.dark)
+          : (seed > 0.87 ? DIRT_VARIATION_COLORS.light : DIRT_VARIATION_COLORS.dark);
+
+        ctx.globalAlpha = isGrassSide ? 0.22 : 0.18;
+        ctx.fillStyle = color;
+        ctx.fillRect(x, boundaryY, seed > 0.9 ? 2 : 1, 1);
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
 function drawDirtEdgeGrass(ctx, dirtArea) {
-  const spacing = Math.max(14, Math.round(dirtArea.height * 0.06));
+  const spacing = 4;
   const rows = Math.ceil(dirtArea.height / spacing) + 1;
 
   ctx.save();
@@ -490,24 +538,24 @@ function drawDirtEdgeGrass(ctx, dirtArea) {
   for (let row = 0; row < rows; row += 1) {
     const normalizedY = clamp((row * spacing + spacing / 2) / dirtArea.height, 0, 1);
     const span = getDirtSpan(dirtArea, normalizedY);
-    const baseY = dirtArea.y + row * spacing + (hash2D(row + 683, 701) - 0.5) * spacing * 0.35;
+    const baseY = dirtArea.y + row * spacing + (hash2D(row + 683, 701) - 0.5) * spacing * 0.3;
 
-    for (const edgeX of [span.x + 1, span.x + span.width - 5]) {
+    for (const edgeX of [span.x + 1, span.x + span.width - 3]) {
       const seed = hash2D(row + Math.round(edgeX), 719);
-      if (seed < 0.28) {
+      if (seed < 0.34) {
         continue;
       }
 
-      const bladeCount = 2 + Math.floor(seed * 3);
+      const bladeCount = 1 + Math.floor(seed * 3);
       for (let bladeIndex = 0; bladeIndex < bladeCount; bladeIndex += 1) {
-        const bladeHeight = 5 + hash2D(bladeIndex + row + 733, 743) * 8;
-        const bladeX = edgeX + bladeIndex * 2;
-        ctx.globalAlpha = 0.18;
+        const bladeHeight = 2 + Math.floor(hash2D(bladeIndex + row + 733, 743) * 4);
+        const bladeX = Math.round(edgeX + bladeIndex);
+        ctx.globalAlpha = 0.22;
         ctx.fillStyle =
           hash2D(bladeIndex + row + 751, 761) > 0.5
             ? GRASS_VARIATION_COLORS.light
             : GRASS_VARIATION_COLORS.dark;
-        ctx.fillRect(bladeX, baseY - bladeHeight, 2, bladeHeight);
+        ctx.fillRect(bladeX, Math.round(baseY) - bladeHeight, 1, bladeHeight);
       }
     }
   }
@@ -518,21 +566,21 @@ function drawDirtEdgeGrass(ctx, dirtArea) {
 function drawBackground(ctx, width, height) {
   const fullArea = { x: 0, y: 0, width, height };
   const dirtArea = getCentralDirtArea(width, height);
-  const grassCellSize = Math.max(12, Math.round(Math.min(width, height) * 0.022));
-  const grassDetailCellSize = Math.max(6, Math.round(Math.min(width, height) * 0.011));
+  const grassCellSize = 6;
+  const grassDetailCellSize = 3;
 
   ctx.imageSmoothingEnabled = true;
 
   fillVariationLayer(ctx, fullArea, {
-    gradientColors: GRASS_BASE_COLORS,
+    baseColor: "#92c951",
     variationColors: GRASS_VARIATION_COLORS,
     cellSize: grassCellSize,
     seedOffset: 3,
-    alphaScale: 0.48,
-    jitterScale: 0.12,
-    minPatchScale: 0.84,
-    maxPatchScale: 1.08,
-    baseAlpha: 0.008,
+    alphaScale: 0.34,
+    jitterScale: 0.07,
+    minPatchScale: 0.76,
+    maxPatchScale: 0.98,
+    baseAlpha: 0.007,
   });
 
   fillVariationLayer(ctx, fullArea, {
@@ -543,11 +591,11 @@ function drawBackground(ctx, width, height) {
     },
     cellSize: grassDetailCellSize,
     seedOffset: 9,
-    alphaScale: 0.24,
-    jitterScale: 0.08,
-    minPatchScale: 0.8,
-    maxPatchScale: 1.02,
-    baseAlpha: 0.006,
+    alphaScale: 0.18,
+    jitterScale: 0.04,
+    minPatchScale: 0.7,
+    maxPatchScale: 0.9,
+    baseAlpha: 0.005,
   });
 
   drawGrassPixelDetails(ctx, fullArea);
@@ -556,6 +604,7 @@ function drawBackground(ctx, width, height) {
   drawSoftDirtBorder(ctx, dirtArea);
   drawDirtBody(ctx, dirtArea);
   drawDirtTexture(ctx, dirtArea);
+  drawDirtTransitionPixels(ctx, dirtArea);
   drawDirtEdgeGrass(ctx, dirtArea);
 }
 
