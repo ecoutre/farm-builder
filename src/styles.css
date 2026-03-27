@@ -47,6 +47,7 @@ body {
   pointer-events: auto;
   cursor: grab;
   touch-action: none;
+  z-index: 1;
 }
 
 .placed-object.is-dragging {
@@ -60,18 +61,19 @@ body {
 
 .placement-preview {
   opacity: 0;
+  z-index: 3;
   filter:
     drop-shadow(0 3px 0 rgba(21, 30, 16, 0.2))
     saturate(0.9);
-  transition: opacity 80ms ease;
+  pointer-events: none;
 }
 
 .placement-preview.is-visible {
-  opacity: 0.55;
+  opacity: 0.82;
 }
 
 .placement-preview.is-blocked {
-  opacity: 0.35;
+  opacity: 0.45;
 }
 
 .game-layer {
