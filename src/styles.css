@@ -46,6 +46,34 @@ body {
   font-size: 1.2rem;
   image-rendering: pixelated;
   filter: drop-shadow(0 3px 0 rgba(21, 30, 16, 0.35));
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.placed-object.is-dragging {
+  cursor: grabbing;
+  z-index: 2;
+}
+
+.placed-object.is-invalid-drop {
+  opacity: 0.65;
+}
+
+.placement-preview {
+  opacity: 0;
+  filter:
+    drop-shadow(0 3px 0 rgba(21, 30, 16, 0.2))
+    saturate(0.9);
+  transition: opacity 80ms ease;
+}
+
+.placement-preview.is-visible {
+  opacity: 0.55;
+}
+
+.placement-preview.is-blocked {
+  opacity: 0.35;
 }
 
 .game-layer {
@@ -150,8 +178,8 @@ body {
 }
 
 .farm-object-button__icon {
-  width: 42px;
-  height: 42px;
+  width: 46px;
+  height: 46px;
   border: 2px solid rgba(0, 0, 0, 0.45);
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.16);
@@ -217,8 +245,8 @@ body {
   }
 
   .farm-object-button__icon {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     font-size: 1.55rem;
   }
 }

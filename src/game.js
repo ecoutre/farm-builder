@@ -4,6 +4,7 @@ const TOOLBAR_ID = "toolbar-buttons";
 const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
 const PLACED_OBJECT_SIZE = 40;
+const SKY_HEIGHT_RATIO = 0.36;
 
 const FARM_OBJECTS = [
   { id: "barn", label: "Barn", imageSrc: "./src/assets/sprites/barn.png" },
@@ -17,7 +18,13 @@ const FARM_OBJECTS = [
 const state = {
   activeObjectId: null,
   placements: [],
+  preview: {
+    clientX: 0,
+    clientY: 0,
+    isPointerActive: false,
+  },
 };
+let activePlacementDrag = null;
 const SOURCE_TILE_SIZE = 32;
 const TILE_SCALE = 3;
 const TILE_DRAW_SIZE = SOURCE_TILE_SIZE * TILE_SCALE;
@@ -171,11 +178,28 @@ function getGrassTiles() {
   return cachedGrassTiles;
 }
 
+function getFarmTop(height) {
+  return Math.round(height * SKY_HEIGHT_RATIO);
+}
+
 function drawBackground(ctx, width, height) {
+  const farmTop = getFarmTop(height);
+  const skyGradient = ctx.createLinearGradient(0, 0, 0, farmTop);
+  skyGradient.addColorStop(0, "#78c6ff");
+  skyGradient.addColorStop(1, "#d9f4ff");
+  ctx.fillStyle = skyGradient;
+  ctx.fillRect(0, 0, width, farmTop);
+  ctx.fillStyle = "#d8e9a0";
+  ctx.fillRect(0, Math.max(0, farmTop - 8), width, 8);
+
   const tiles = getGrassTiles();
   const cols = Math.ceil(width / TILE_DRAW_SIZE);
   const rows = Math.ceil(height / TILE_DRAW_SIZE);
   ctx.imageSmoothingEnabled = false;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, farmTop, width, Math.max(0, height - farmTop));
+  ctx.clip();
 
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
@@ -191,6 +215,8 @@ function drawBackground(ctx, width, height) {
       );
     }
   }
+
+  ctx.restore();
 }
 
 function getUIRefs() {
@@ -234,6 +260,11 @@ function setActiveObject(objectId) {
 
   state.activeObjectId = objectId;
   updateActiveUI();
+  syncPreviewObject();
+
+  if (state.preview.isPointerActive) {
+    updatePlacementPreview(state.preview.clientX, state.preview.clientY);
+  }
 }
 
 function renderToolbar() {
@@ -271,6 +302,7 @@ function renderPlacedObject(placement) {
   const { placementLayer } = getUIRefs();
   const objectEl = document.createElement("div");
   objectEl.className = "placed-object";
+  objectEl.setAttribute("aria-label", `${placement.label} placed`);
   
   const img = document.createElement("img");
   img.src = placement.imageSrc;
@@ -282,10 +314,57 @@ function renderPlacedObject(placement) {
   img.style.imageRendering = "pixelated";
   
   objectEl.appendChild(img);
-  objectEl.setAttribute("aria-label", `${placement.label} placed`);
-  objectEl.style.left = `${placement.x}px`;
-  objectEl.style.top = `${placement.y}px`;
+  placement.element = objectEl;
+  objectEl.addEventListener("pointerdown", (event) =>
+    startPlacementDrag(placement, objectEl, event),
+  );
+  objectEl.addEventListener("pointermove", handlePlacementDragMove);
+  objectEl.addEventListener("pointerup", endPlacementDrag);
+  objectEl.addEventListener("pointercancel", endPlacementDrag);
+  objectEl.addEventListener("lostpointercapture", endPlacementDrag);
+  updatePlacedObjectPosition(placement);
   placementLayer.appendChild(objectEl);
+}
+
+function ensurePreviewObject() {
+  const { placementLayer } = getUIRefs();
+  let previewEl = placementLayer.querySelector(".placement-preview");
+
+  if (!previewEl) {
+    previewEl = document.createElement("div");
+    previewEl.className = "placed-object placement-preview";
+    previewEl.setAttribute("aria-hidden", "true");
+
+    const img = document.createElement("img");
+    img.alt = "";
+    img.draggable = false;
+    img.style.width = "100%";
+    img.style.height = "100%";
+    img.style.objectFit = "contain";
+    img.style.imageRendering = "pixelated";
+
+    previewEl.appendChild(img);
+    placementLayer.appendChild(previewEl);
+  }
+
+  return previewEl;
+}
+
+function syncPreviewObject() {
+  const activeObject = getObjectById(state.activeObjectId);
+  const previewEl = ensurePreviewObject();
+  const img = previewEl.querySelector("img");
+
+  if (!activeObject || !img) {
+    return;
+  }
+
+  img.src = activeObject.imageSrc;
+}
+
+function hidePlacementPreview() {
+  const previewEl = ensurePreviewObject();
+  previewEl.classList.remove("is-visible", "is-blocked");
 }
 
 function getPlacementFootprint(centerX, centerY) {
@@ -299,10 +378,23 @@ function getPlacementFootprint(centerX, centerY) {
   };
 }
 
-function overlapsExistingPlacement(centerX, centerY) {
+function updatePlacedObjectPosition(placement, x = placement.x, y = placement.y) {
+  if (!placement.element) {
+    return;
+  }
+
+  placement.element.style.left = `${x}px`;
+  placement.element.style.top = `${y}px`;
+}
+
+function overlapsExistingPlacement(centerX, centerY, ignoredPlacement = null) {
   const nextFootprint = getPlacementFootprint(centerX, centerY);
 
   return state.placements.some((placement) => {
+    if (placement === ignoredPlacement) {
+      return false;
+    }
+
     const existingFootprint = getPlacementFootprint(placement.x, placement.y);
     return !(
       nextFootprint.right <= existingFootprint.left ||
@@ -313,24 +405,47 @@ function overlapsExistingPlacement(centerX, centerY) {
   });
 }
 
-function getSnappedPlacement(clientX, clientY) {
+function getSnappedPlacement(clientX, clientY, offsetX = 0, offsetY = 0) {
   const { view } = getViewAndCanvas();
   const bounds = view.getBoundingClientRect();
-  const relativeX = clientX - bounds.left;
-  const relativeY = clientY - bounds.top;
+  const relativeX = clientX - bounds.left - offsetX;
+  const relativeY = clientY - bounds.top - offsetY;
   const snappedX = Math.round(relativeX / PLACE_GRID_SIZE) * PLACE_GRID_SIZE;
   const snappedY = Math.round(relativeY / PLACE_GRID_SIZE) * PLACE_GRID_SIZE;
   const halfSize = PLACED_OBJECT_SIZE / 2;
+  const farmTop = getFarmTop(bounds.height);
+  const isInsideBounds =
+    snappedX >= halfSize &&
+    snappedX <= bounds.width - halfSize &&
+    snappedY >= halfSize &&
+    snappedY <= bounds.height - halfSize;
+  const isInFarmArea = snappedY >= farmTop + halfSize;
 
   return {
     x: snappedX,
     y: snappedY,
-    isInsideBounds:
-      snappedX >= halfSize &&
-      snappedX <= bounds.width - halfSize &&
-      snappedY >= halfSize &&
-      snappedY <= bounds.height - halfSize,
+    isInsideBounds,
+    isInFarmArea,
+    isPlaceable: isInsideBounds && isInFarmArea,
   };
+}
+
+function updatePlacementPreview(clientX, clientY) {
+  const activeObject = getObjectById(state.activeObjectId);
+  if (!activeObject) {
+    hidePlacementPreview();
+    return;
+  }
+
+  const previewEl = ensurePreviewObject();
+  const placement = getSnappedPlacement(clientX, clientY);
+  const isBlocked =
+    placement.isPlaceable && overlapsExistingPlacement(placement.x, placement.y);
+
+  previewEl.style.left = `${placement.x}px`;
+  previewEl.style.top = `${placement.y}px`;
+  previewEl.classList.toggle("is-visible", placement.isPlaceable);
+  previewEl.classList.toggle("is-blocked", isBlocked);
 }
 
 function placeObject(clientX, clientY) {
@@ -340,7 +455,7 @@ function placeObject(clientX, clientY) {
   }
 
   const placement = getSnappedPlacement(clientX, clientY);
-  if (!placement.isInsideBounds) {
+  if (!placement.isPlaceable) {
     return false;
   }
 
@@ -361,11 +476,119 @@ function placeObject(clientX, clientY) {
   return true;
 }
 
+function startPlacementDrag(placement, objectEl, event) {
+  if (activePlacementDrag) {
+    return;
+  }
+
+  event.preventDefault();
+
+  const { view } = getViewAndCanvas();
+  const bounds = view.getBoundingClientRect();
+  activePlacementDrag = {
+    placement,
+    objectEl,
+    pointerId: event.pointerId,
+    originX: placement.x,
+    originY: placement.y,
+    previewX: placement.x,
+    previewY: placement.y,
+    offsetX: event.clientX - bounds.left - placement.x,
+    offsetY: event.clientY - bounds.top - placement.y,
+    isValidDrop: true,
+  };
+
+  objectEl.classList.add("is-dragging");
+  objectEl.setPointerCapture(event.pointerId);
+}
+
+function handlePlacementDragMove(event) {
+  if (
+    !activePlacementDrag ||
+    activePlacementDrag.pointerId !== event.pointerId
+  ) {
+    return;
+  }
+
+  const snappedPlacement = getSnappedPlacement(
+    event.clientX,
+    event.clientY,
+    activePlacementDrag.offsetX,
+    activePlacementDrag.offsetY,
+  );
+
+  activePlacementDrag.previewX = snappedPlacement.x;
+  activePlacementDrag.previewY = snappedPlacement.y;
+  activePlacementDrag.isValidDrop =
+    snappedPlacement.isInsideBounds &&
+    !overlapsExistingPlacement(
+      snappedPlacement.x,
+      snappedPlacement.y,
+      activePlacementDrag.placement,
+    );
+
+  activePlacementDrag.objectEl.classList.toggle(
+    "is-invalid-drop",
+    !activePlacementDrag.isValidDrop,
+  );
+  updatePlacedObjectPosition(
+    activePlacementDrag.placement,
+    snappedPlacement.x,
+    snappedPlacement.y,
+  );
+}
+
+function endPlacementDrag(event) {
+  if (
+    !activePlacementDrag ||
+    activePlacementDrag.pointerId !== event.pointerId
+  ) {
+    return;
+  }
+
+  const {
+    placement,
+    objectEl,
+    originX,
+    originY,
+    previewX,
+    previewY,
+    isValidDrop,
+  } = activePlacementDrag;
+
+  if (event.type === "pointerup" && isValidDrop) {
+    placement.x = previewX;
+    placement.y = previewY;
+  } else {
+    updatePlacedObjectPosition(placement, originX, originY);
+  }
+
+  objectEl.classList.remove("is-dragging", "is-invalid-drop");
+  activePlacementDrag = null;
+  if (objectEl.hasPointerCapture(event.pointerId)) {
+    objectEl.releasePointerCapture(event.pointerId);
+  }
+  updatePlacedObjectPosition(placement);
+}
+
 function setupPlacementInput() {
   const { canvas } = getViewAndCanvas();
 
+  canvas.addEventListener("pointermove", (event) => {
+    state.preview.clientX = event.clientX;
+    state.preview.clientY = event.clientY;
+    state.preview.isPointerActive = true;
+    updatePlacementPreview(event.clientX, event.clientY);
+  });
+
+  canvas.addEventListener("pointerleave", () => {
+    state.preview.isPointerActive = false;
+    hidePlacementPreview();
+  });
+
   canvas.addEventListener("click", (event) => {
     placeObject(event.clientX, event.clientY);
+    updatePlacementPreview(event.clientX, event.clientY);
   });
 }
 
@@ -389,10 +612,16 @@ function resizeAndRender() {
   ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   ctx.clearRect(0, 0, width, height);
   drawBackground(ctx, width, height);
+
+  if (state.preview.isPointerActive) {
+    updatePlacementPreview(state.preview.clientX, state.preview.clientY);
+  }
 }
 
 function init() {
   renderToolbar();
+  syncPreviewObject();
+  setActiveObject(state.activeObjectId);
   setupPlacementInput();
   resizeAndRender();
   window.addEventListener("resize", resizeAndRender);
