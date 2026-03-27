@@ -27,6 +27,12 @@ body {
   inset: 0;
   z-index: 0;
   image-rendering: pixelated;
+  cursor: grab;
+  touch-action: none;
+}
+
+.background-layer.is-panning {
+  cursor: grabbing;
 }
 
 .placement-layer {
