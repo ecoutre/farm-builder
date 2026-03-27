@@ -13,6 +13,24 @@
         class="background-layer"
         aria-label="Farm ground background"
       ></canvas>
+      <section id="audio-settings" class="audio-settings" aria-label="Audio settings">
+        <label class="audio-settings__toggle" for="audio-enabled-toggle">
+          <input id="audio-enabled-toggle" type="checkbox" />
+          <span>Farm audio</span>
+        </label>
+        <label class="audio-settings__slider-row" for="audio-volume-slider">
+          <span>Volume</span>
+          <input
+            id="audio-volume-slider"
+            class="audio-settings__slider"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+          />
+        </label>
+        <p id="audio-status" class="audio-settings__status" aria-live="polite"></p>
+      </section>
       <section
         id="placement-layer"
         class="placement-layer"
