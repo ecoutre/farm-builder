@@ -18,6 +18,7 @@ const state = {
   activeObjectId: FARM_OBJECTS[0].id,
   placements: [],
 };
+let activePlacementDrag = null;
 const SOURCE_TILE_SIZE = 32;
 const TILE_SCALE = 3;
 const TILE_DRAW_SIZE = SOURCE_TILE_SIZE * TILE_SCALE;
@@ -261,6 +262,7 @@ function renderPlacedObject(placement) {
   const { placementLayer } = getUIRefs();
   const objectEl = document.createElement("div");
   objectEl.className = "placed-object";
+  objectEl.setAttribute("aria-label", `${placement.label} placed`);
   
   const img = document.createElement("img");
   img.src = placement.imageSrc;
@@ -272,9 +274,15 @@ function renderPlacedObject(placement) {
   img.style.imageRendering = "pixelated";
   
   objectEl.appendChild(img);
-  objectEl.setAttribute("aria-label", `${placement.label} placed`);
-  objectEl.style.left = `${placement.x}px`;
-  objectEl.style.top = `${placement.y}px`;
+  placement.element = objectEl;
+  objectEl.addEventListener("pointerdown", (event) =>
+    startPlacementDrag(placement, objectEl, event),
+  );
+  objectEl.addEventListener("pointermove", handlePlacementDragMove);
+  objectEl.addEventListener("pointerup", endPlacementDrag);
+  objectEl.addEventListener("pointercancel", endPlacementDrag);
+  objectEl.addEventListener("lostpointercapture", endPlacementDrag);
+  updatePlacedObjectPosition(placement);
   placementLayer.appendChild(objectEl);
 }
 
@@ -289,10 +297,23 @@ function getPlacementFootprint(centerX, centerY) {
   };
 }
 
-function overlapsExistingPlacement(centerX, centerY) {
+function updatePlacedObjectPosition(placement, x = placement.x, y = placement.y) {
+  if (!placement.element) {
+    return;
+  }
+
+  placement.element.style.left = `${x}px`;
+  placement.element.style.top = `${y}px`;
+}
+
+function overlapsExistingPlacement(centerX, centerY, ignoredPlacement = null) {
   const nextFootprint = getPlacementFootprint(centerX, centerY);
 
   return state.placements.some((placement) => {
+    if (placement === ignoredPlacement) {
+      return false;
+    }
+
     const existingFootprint = getPlacementFootprint(placement.x, placement.y);
     return !(
       nextFootprint.right <= existingFootprint.left ||
@@ -303,11 +324,11 @@ function overlapsExistingPlacement(centerX, centerY) {
   });
 }
 
-function getSnappedPlacement(clientX, clientY) {
+function getSnappedPlacement(clientX, clientY, offsetX = 0, offsetY = 0) {
   const { view } = getViewAndCanvas();
   const bounds = view.getBoundingClientRect();
-  const relativeX = clientX - bounds.left;
-  const relativeY = clientY - bounds.top;
+  const relativeX = clientX - bounds.left - offsetX;
+  const relativeY = clientY - bounds.top - offsetY;
   const snappedX = Math.round(relativeX / PLACE_GRID_SIZE) * PLACE_GRID_SIZE;
   const snappedY = Math.round(relativeY / PLACE_GRID_SIZE) * PLACE_GRID_SIZE;
   const halfSize = PLACED_OBJECT_SIZE / 2;
@@ -349,6 +370,101 @@ function placeObject(clientX, clientY) {
   state.placements.push(placedObject);
   renderPlacedObject(placedObject);
   return true;
+}
+
+function startPlacementDrag(placement, objectEl, event) {
+  if (activePlacementDrag) {
+    return;
+  }
+
+  event.preventDefault();
+
+  const { view } = getViewAndCanvas();
+  const bounds = view.getBoundingClientRect();
+  activePlacementDrag = {
+    placement,
+    objectEl,
+    pointerId: event.pointerId,
+    originX: placement.x,
+    originY: placement.y,
+    previewX: placement.x,
+    previewY: placement.y,
+    offsetX: event.clientX - bounds.left - placement.x,
+    offsetY: event.clientY - bounds.top - placement.y,
+    isValidDrop: true,
+  };
+
+  objectEl.classList.add("is-dragging");
+  objectEl.setPointerCapture(event.pointerId);
+}
+
+function handlePlacementDragMove(event) {
+  if (
+    !activePlacementDrag ||
+    activePlacementDrag.pointerId !== event.pointerId
+  ) {
+    return;
+  }
+
+  const snappedPlacement = getSnappedPlacement(
+    event.clientX,
+    event.clientY,
+    activePlacementDrag.offsetX,
+    activePlacementDrag.offsetY,
+  );
+
+  activePlacementDrag.previewX = snappedPlacement.x;
+  activePlacementDrag.previewY = snappedPlacement.y;
+  activePlacementDrag.isValidDrop =
+    snappedPlacement.isInsideBounds &&
+    !overlapsExistingPlacement(
+      snappedPlacement.x,
+      snappedPlacement.y,
+      activePlacementDrag.placement,
+    );
+
+  activePlacementDrag.objectEl.classList.toggle(
+    "is-invalid-drop",
+    !activePlacementDrag.isValidDrop,
+  );
+  updatePlacedObjectPosition(
+    activePlacementDrag.placement,
+    snappedPlacement.x,
+    snappedPlacement.y,
+  );
+}
+
+function endPlacementDrag(event) {
+  if (
+    !activePlacementDrag ||
+    activePlacementDrag.pointerId !== event.pointerId
+  ) {
+    return;
+  }
+
+  const {
+    placement,
+    objectEl,
+    originX,
+    originY,
+    previewX,
+    previewY,
+    isValidDrop,
+  } = activePlacementDrag;
+
+  if (event.type === "pointerup" && isValidDrop) {
+    placement.x = previewX;
+    placement.y = previewY;
+  } else {
+    updatePlacedObjectPosition(placement, originX, originY);
+  }
+
+  objectEl.classList.remove("is-dragging", "is-invalid-drop");
+  activePlacementDrag = null;
+  if (objectEl.hasPointerCapture(event.pointerId)) {
+    objectEl.releasePointerCapture(event.pointerId);
+  }
+  updatePlacedObjectPosition(placement);
 }
 
 function setupPlacementInput() {
