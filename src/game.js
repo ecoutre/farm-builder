@@ -5,10 +5,8 @@ const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
 const PLACED_OBJECT_BASE_SIZE = 40;
 const PLACED_OBJECT_SCALE_UP = 2;
-const SKY_HEIGHT_RATIO = 0.34;
-const PATH_BAND_HEIGHT = 12;
 const PATH_STEP = 6;
-const DIRT_PALETTE = ["#7f5a2f", "#9d7240", "#b88649", "#d7a55a"];
+const DIRT_PALETTE = ["#b98b57", "#cfa06a", "#e2ba84", "#f0d8ab"];
 const FARM_OBJECTS = [
   {
     id: "barn",
@@ -218,118 +216,106 @@ function getGrassTiles() {
   return cachedGrassTiles;
 }
 
-function getFarmTop(height) {
-  return Math.round(height * SKY_HEIGHT_RATIO);
-}
-
 function snapToPixelStep(value, step = PATH_STEP) {
   return Math.round(value / step) * step;
 }
 
-function getPathMetrics(y, width, height, farmTop) {
-  const depth = Math.max(0, (y - farmTop) / Math.max(1, height - farmTop));
-  const sway =
-    Math.sin(depth * Math.PI * 1.2 + 0.3) * width * 0.05 +
-    Math.sin(depth * Math.PI * 3.7 + 1.1) * width * 0.018 +
-    (hash2D(Math.floor(depth * 22), 13) - 0.5) * 14;
-  const centerX = snapToPixelStep(width * 0.5 + sway);
-  const halfWidth = snapToPixelStep(
-    width * (0.058 + depth * 0.05) +
-      Math.sin(depth * Math.PI * 2.4 + 0.7) * 10 +
-      hash2D(Math.floor(depth * 28), 41) * 10,
-  );
+function getRoundedRectDistance(
+  pointX,
+  pointY,
+  centerX,
+  centerY,
+  halfWidth,
+  halfHeight,
+  radius,
+) {
+  const offsetX = Math.abs(pointX - centerX) - (halfWidth - radius);
+  const offsetY = Math.abs(pointY - centerY) - (halfHeight - radius);
+  const outsideDistance = Math.hypot(Math.max(offsetX, 0), Math.max(offsetY, 0));
+  const insideDistance = Math.min(Math.max(offsetX, offsetY), 0);
 
-  return {
-    centerX,
-    halfWidth: Math.max(PATH_STEP * 4, halfWidth),
-  };
+  return outsideDistance + insideDistance - radius;
 }
 
-function drawDirtPath(ctx, width, height, farmTop) {
-  const farmHeight = Math.max(0, height - farmTop);
+function getDirtCellColor(cellX, cellY, centerX, centerY, halfWidth, halfHeight) {
+  const distanceX = Math.abs(cellX - centerX) / Math.max(PATH_STEP, halfWidth);
+  const distanceY = Math.abs(cellY - centerY) / Math.max(PATH_STEP, halfHeight);
+  const centerBias = 1 - Math.min(1, distanceX * 0.7 + distanceY * 0.95);
+  const detail = hash2D(
+    Math.floor(cellX / PATH_STEP) + 71,
+    Math.floor(cellY / PATH_STEP) + 103,
+  );
 
-  if (farmHeight <= 0) {
-    return;
+  if (detail < 0.12) {
+    return DIRT_PALETTE[0];
   }
 
-  for (let y = farmTop; y < height; y += PATH_BAND_HEIGHT) {
-    const bandCenterY = y + PATH_BAND_HEIGHT / 2;
-    const bandIndex = Math.floor((y - farmTop) / PATH_BAND_HEIGHT);
-    const { centerX, halfWidth } = getPathMetrics(bandCenterY, width, height, farmTop);
-    const leftEdge = Math.max(0, centerX - halfWidth);
-    const rightEdge = Math.min(width, centerX + halfWidth);
-    const pathWidth = Math.max(0, rightEdge - leftEdge);
+  if (detail > 0.9 || (centerBias > 0.62 && detail > 0.68)) {
+    return DIRT_PALETTE[3];
+  }
 
-    if (pathWidth <= 0) {
-      continue;
-    }
+  if (centerBias > 0.38 && detail > 0.48) {
+    return DIRT_PALETTE[2];
+  }
 
-    const innerInset = PATH_STEP * 2;
-    const innerWidth = Math.max(0, pathWidth - innerInset * 2);
-    const highlightWidth = Math.max(PATH_STEP * 2, Math.floor(innerWidth * 0.4 / PATH_STEP) * PATH_STEP);
-    const highlightX = snapToPixelStep(centerX - highlightWidth / 2);
-    const leftShoulder = Math.max(0, leftEdge - PATH_STEP);
-    const rightShoulder = Math.min(width, rightEdge + PATH_STEP);
-    const grassDepth = (bandCenterY - farmTop) / farmHeight;
+  return DIRT_PALETTE[1];
+}
 
-    ctx.fillStyle = bandIndex % 2 === 0 ? GRASS_PALETTE[2] : GRASS_PALETTE[1];
-    ctx.fillRect(leftShoulder, y, PATH_STEP, PATH_BAND_HEIGHT);
-    ctx.fillRect(rightEdge, y, PATH_STEP, PATH_BAND_HEIGHT);
+function drawCentralDirtPatch(ctx, width, height) {
+  const centerX = snapToPixelStep(width * 0.5);
+  const centerY = snapToPixelStep(height * 0.52);
+  const halfWidth = Math.max(PATH_STEP * 12, snapToPixelStep(width * 0.32));
+  const halfHeight = Math.max(PATH_STEP * 10, snapToPixelStep(height * 0.26));
+  const radius = Math.max(PATH_STEP * 4, snapToPixelStep(Math.min(width, height) * 0.12));
 
-    ctx.fillStyle = bandIndex % 3 === 0 ? DIRT_PALETTE[0] : DIRT_PALETTE[1];
-    ctx.fillRect(leftEdge, y, pathWidth, PATH_BAND_HEIGHT);
+  for (let y = 0; y < height; y += PATH_STEP) {
+    for (let x = 0; x < width; x += PATH_STEP) {
+      const cellCenterX = x + PATH_STEP / 2;
+      const cellCenterY = y + PATH_STEP / 2;
+      const edgeNoise =
+        (hash2D(Math.floor(x / PATH_STEP) + 17, Math.floor(y / PATH_STEP) + 29) - 0.5) *
+        PATH_STEP *
+        1.2;
+      const distance = getRoundedRectDistance(
+        cellCenterX,
+        cellCenterY,
+        centerX,
+        centerY,
+        halfWidth,
+        halfHeight,
+        radius,
+      );
 
-    ctx.fillStyle = DIRT_PALETTE[2];
-    ctx.fillRect(leftEdge + innerInset, y, innerWidth, PATH_BAND_HEIGHT);
+      if (distance > edgeNoise) {
+        continue;
+      }
 
-    if (bandIndex % 3 !== 1) {
-      ctx.fillStyle = DIRT_PALETTE[3];
-      ctx.fillRect(highlightX, y, highlightWidth, PATH_STEP);
-    }
+      ctx.fillStyle = getDirtCellColor(
+        cellCenterX,
+        cellCenterY,
+        centerX,
+        centerY,
+        halfWidth,
+        halfHeight,
+      );
+      ctx.fillRect(x, y, PATH_STEP, PATH_STEP);
 
-    ctx.fillStyle = DIRT_PALETTE[0];
-    ctx.fillRect(leftEdge, y, PATH_STEP, PATH_BAND_HEIGHT);
-    ctx.fillRect(rightEdge - PATH_STEP, y, PATH_STEP, PATH_BAND_HEIGHT);
-
-    const edgeTuftColor = grassDepth > 0.5 ? GRASS_PALETTE[4] : GRASS_PALETTE[3];
-    ctx.fillStyle = edgeTuftColor;
-
-    if (hash2D(bandIndex, 5) > 0.32) {
-      ctx.fillRect(leftEdge, y + PATH_STEP, PATH_STEP, PATH_STEP);
-    }
-
-    if (hash2D(bandIndex, 9) > 0.4) {
-      ctx.fillRect(rightEdge - PATH_STEP, y, PATH_STEP, PATH_STEP);
-    }
-
-    if (hash2D(bandIndex, 15) > 0.7) {
-      ctx.fillRect(leftShoulder, y, PATH_STEP, PATH_STEP);
-    }
-
-    if (hash2D(bandIndex, 21) > 0.66) {
-      ctx.fillRect(rightEdge, y + PATH_STEP, PATH_STEP, PATH_STEP);
+      if (
+        distance > -PATH_STEP * 1.4 &&
+        hash2D(Math.floor(x / PATH_STEP) + 151, Math.floor(y / PATH_STEP) + 47) > 0.82
+      ) {
+        ctx.fillStyle = GRASS_PALETTE[3];
+        ctx.fillRect(x, y, PATH_STEP / 2, PATH_STEP / 2);
+      }
     }
   }
 }
 
 function drawBackground(ctx, width, height) {
-  const farmTop = getFarmTop(height);
-  const skyGradient = ctx.createLinearGradient(0, 0, 0, farmTop);
-  skyGradient.addColorStop(0, "#78c6ff");
-  skyGradient.addColorStop(1, "#d9f4ff");
-  ctx.fillStyle = skyGradient;
-  ctx.fillRect(0, 0, width, farmTop);
-  ctx.fillStyle = "#d8e9a0";
-  ctx.fillRect(0, Math.max(0, farmTop - 8), width, 8);
-
   const tiles = getGrassTiles();
   const cols = Math.ceil(width / TILE_DRAW_SIZE);
   const rows = Math.ceil(height / TILE_DRAW_SIZE);
   ctx.imageSmoothingEnabled = false;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, farmTop, width, Math.max(0, height - farmTop));
-  ctx.clip();
 
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
@@ -346,9 +332,7 @@ function drawBackground(ctx, width, height) {
     }
   }
 
-  drawDirtPath(ctx, width, height, farmTop);
-
-  ctx.restore();
+  drawCentralDirtPatch(ctx, width, height);
 }
 
 function getUIRefs() {
