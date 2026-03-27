@@ -5,6 +5,10 @@ const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
 const PLACED_OBJECT_BASE_SIZE = 40;
 const PLACED_OBJECT_SCALE_UP = 2;
+const SKY_HEIGHT_RATIO = 0.34;
+const PATH_BAND_HEIGHT = 12;
+const PATH_STEP = 6;
+const DIRT_PALETTE = ["#7f5a2f", "#9d7240", "#b88649", "#d7a55a"];
 const FARM_OBJECTS = [
   {
     id: "barn",
@@ -57,6 +61,7 @@ const state = {
     clientX: 0,
     clientY: 0,
     isPointerActive: false,
+    element: null,
   },
 };
 let activePlacementDrag = null;
@@ -217,6 +222,96 @@ function getFarmTop(height) {
   return Math.round(height * SKY_HEIGHT_RATIO);
 }
 
+function snapToPixelStep(value, step = PATH_STEP) {
+  return Math.round(value / step) * step;
+}
+
+function getPathMetrics(y, width, height, farmTop) {
+  const depth = Math.max(0, (y - farmTop) / Math.max(1, height - farmTop));
+  const sway =
+    Math.sin(depth * Math.PI * 1.2 + 0.3) * width * 0.05 +
+    Math.sin(depth * Math.PI * 3.7 + 1.1) * width * 0.018 +
+    (hash2D(Math.floor(depth * 22), 13) - 0.5) * 14;
+  const centerX = snapToPixelStep(width * 0.5 + sway);
+  const halfWidth = snapToPixelStep(
+    width * (0.058 + depth * 0.05) +
+      Math.sin(depth * Math.PI * 2.4 + 0.7) * 10 +
+      hash2D(Math.floor(depth * 28), 41) * 10,
+  );
+
+  return {
+    centerX,
+    halfWidth: Math.max(PATH_STEP * 4, halfWidth),
+  };
+}
+
+function drawDirtPath(ctx, width, height, farmTop) {
+  const farmHeight = Math.max(0, height - farmTop);
+
+  if (farmHeight <= 0) {
+    return;
+  }
+
+  for (let y = farmTop; y < height; y += PATH_BAND_HEIGHT) {
+    const bandCenterY = y + PATH_BAND_HEIGHT / 2;
+    const bandIndex = Math.floor((y - farmTop) / PATH_BAND_HEIGHT);
+    const { centerX, halfWidth } = getPathMetrics(bandCenterY, width, height, farmTop);
+    const leftEdge = Math.max(0, centerX - halfWidth);
+    const rightEdge = Math.min(width, centerX + halfWidth);
+    const pathWidth = Math.max(0, rightEdge - leftEdge);
+
+    if (pathWidth <= 0) {
+      continue;
+    }
+
+    const innerInset = PATH_STEP * 2;
+    const innerWidth = Math.max(0, pathWidth - innerInset * 2);
+    const highlightWidth = Math.max(PATH_STEP * 2, Math.floor(innerWidth * 0.4 / PATH_STEP) * PATH_STEP);
+    const highlightX = snapToPixelStep(centerX - highlightWidth / 2);
+    const leftShoulder = Math.max(0, leftEdge - PATH_STEP);
+    const rightShoulder = Math.min(width, rightEdge + PATH_STEP);
+    const grassDepth = (bandCenterY - farmTop) / farmHeight;
+
+    ctx.fillStyle = bandIndex % 2 === 0 ? GRASS_PALETTE[2] : GRASS_PALETTE[1];
+    ctx.fillRect(leftShoulder, y, PATH_STEP, PATH_BAND_HEIGHT);
+    ctx.fillRect(rightEdge, y, PATH_STEP, PATH_BAND_HEIGHT);
+
+    ctx.fillStyle = bandIndex % 3 === 0 ? DIRT_PALETTE[0] : DIRT_PALETTE[1];
+    ctx.fillRect(leftEdge, y, pathWidth, PATH_BAND_HEIGHT);
+
+    ctx.fillStyle = DIRT_PALETTE[2];
+    ctx.fillRect(leftEdge + innerInset, y, innerWidth, PATH_BAND_HEIGHT);
+
+    if (bandIndex % 3 !== 1) {
+      ctx.fillStyle = DIRT_PALETTE[3];
+      ctx.fillRect(highlightX, y, highlightWidth, PATH_STEP);
+    }
+
+    ctx.fillStyle = DIRT_PALETTE[0];
+    ctx.fillRect(leftEdge, y, PATH_STEP, PATH_BAND_HEIGHT);
+    ctx.fillRect(rightEdge - PATH_STEP, y, PATH_STEP, PATH_BAND_HEIGHT);
+
+    const edgeTuftColor = grassDepth > 0.5 ? GRASS_PALETTE[4] : GRASS_PALETTE[3];
+    ctx.fillStyle = edgeTuftColor;
+
+    if (hash2D(bandIndex, 5) > 0.32) {
+      ctx.fillRect(leftEdge, y + PATH_STEP, PATH_STEP, PATH_STEP);
+    }
+
+    if (hash2D(bandIndex, 9) > 0.4) {
+      ctx.fillRect(rightEdge - PATH_STEP, y, PATH_STEP, PATH_STEP);
+    }
+
+    if (hash2D(bandIndex, 15) > 0.7) {
+      ctx.fillRect(leftShoulder, y, PATH_STEP, PATH_STEP);
+    }
+
+    if (hash2D(bandIndex, 21) > 0.66) {
+      ctx.fillRect(rightEdge, y + PATH_STEP, PATH_STEP, PATH_STEP);
+    }
+  }
+}
+
 function drawBackground(ctx, width, height) {
   const farmTop = getFarmTop(height);
   const skyGradient = ctx.createLinearGradient(0, 0, 0, farmTop);
@@ -250,6 +345,8 @@ function drawBackground(ctx, width, height) {
       );
     }
   }
+
+  drawDirtPath(ctx, width, height, farmTop);
 
   ctx.restore();
 }
@@ -352,7 +449,14 @@ function renderPlacedObject(placement) {
   objectEl.style.top = `${placement.y}px`;
   objectEl.style.width = `${placement.width}px`;
   objectEl.style.height = `${placement.height}px`;
+  objectEl.addEventListener("pointerdown", (event) => {
+    startPlacementDrag(placement, objectEl, event);
+  });
+  objectEl.addEventListener("pointermove", handlePlacementDragMove);
+  objectEl.addEventListener("pointerup", endPlacementDrag);
+  objectEl.addEventListener("pointercancel", endPlacementDrag);
   placementLayer.appendChild(objectEl);
+  placement.objectEl = objectEl;
 }
 
 function getPlacementFootprint(centerX, centerY, width, height) {
@@ -367,10 +471,20 @@ function getPlacementFootprint(centerX, centerY, width, height) {
   };
 }
 
-function overlapsExistingPlacement(centerX, centerY, width, height) {
+function overlapsExistingPlacement(
+  centerX,
+  centerY,
+  width,
+  height,
+  ignoredPlacement = null,
+) {
   const nextFootprint = getPlacementFootprint(centerX, centerY, width, height);
 
   return state.placements.some((placement) => {
+    if (placement === ignoredPlacement) {
+      return false;
+    }
+
     const existingFootprint = getPlacementFootprint(
       placement.x,
       placement.y,
@@ -386,13 +500,21 @@ function overlapsExistingPlacement(centerX, centerY, width, height) {
   });
 }
 
-function getSnappedPlacement(clientX, clientY, width, height) {
+function getSnappedPosition(clientX, clientY, offsetX = 0, offsetY = 0) {
   const { view } = getViewAndCanvas();
   const bounds = view.getBoundingClientRect();
   const relativeX = clientX - bounds.left - offsetX;
   const relativeY = clientY - bounds.top - offsetY;
-  const snappedX = Math.round(relativeX / PLACE_GRID_SIZE) * PLACE_GRID_SIZE;
-  const snappedY = Math.round(relativeY / PLACE_GRID_SIZE) * PLACE_GRID_SIZE;
+
+  return {
+    x: Math.round(relativeX / PLACE_GRID_SIZE) * PLACE_GRID_SIZE,
+    y: Math.round(relativeY / PLACE_GRID_SIZE) * PLACE_GRID_SIZE,
+    bounds,
+  };
+}
+
+function getSnappedPlacement(clientX, clientY, width, height) {
+  const { x: snappedX, y: snappedY, bounds } = getSnappedPosition(clientX, clientY);
   const halfWidth = width / 2;
   const halfHeight = height / 2;
 
@@ -407,6 +529,81 @@ function getSnappedPlacement(clientX, clientY, width, height) {
   };
 }
 
+function updatePlacedObjectPosition(
+  placement,
+  nextX = placement.x,
+  nextY = placement.y,
+) {
+  if (!placement.objectEl) {
+    return;
+  }
+
+  placement.objectEl.style.left = `${nextX}px`;
+  placement.objectEl.style.top = `${nextY}px`;
+}
+
+function ensurePreviewObject() {
+  const activeObject = getObjectById(state.activeObjectId);
+
+  if (!activeObject) {
+    return null;
+  }
+
+  if (state.preview.element?.isConnected) {
+    return state.preview.element;
+  }
+
+  const { placementLayer } = getUIRefs();
+  const previewEl = document.createElement("div");
+  const img = document.createElement("img");
+
+  previewEl.className = "placed-object placement-preview";
+  previewEl.setAttribute("aria-hidden", "true");
+  img.alt = "";
+  img.draggable = false;
+  img.style.width = "100%";
+  img.style.height = "100%";
+  img.style.objectFit = "contain";
+  img.style.imageRendering = "pixelated";
+  previewEl.appendChild(img);
+  placementLayer.appendChild(previewEl);
+  state.preview.element = previewEl;
+
+  return previewEl;
+}
+
+function hidePlacementPreview() {
+  if (!state.preview.element) {
+    return;
+  }
+
+  state.preview.element.classList.remove("is-visible", "is-blocked");
+}
+
+function syncPreviewObject() {
+  const activeObject = getObjectById(state.activeObjectId);
+
+  if (!activeObject) {
+    state.preview.element?.remove();
+    state.preview.element = null;
+    return;
+  }
+
+  const previewEl = ensurePreviewObject();
+  if (!previewEl) {
+    return;
+  }
+
+  const img = previewEl.querySelector("img");
+  if (img instanceof HTMLImageElement) {
+    img.src = activeObject.imageSrc;
+  }
+
+  previewEl.style.width = `${activeObject.placedWidth}px`;
+  previewEl.style.height = `${activeObject.placedHeight}px`;
+  hidePlacementPreview();
+}
+
 function updatePlacementPreview(clientX, clientY) {
   const activeObject = getObjectById(state.activeObjectId);
   if (!activeObject) {
@@ -415,14 +612,25 @@ function updatePlacementPreview(clientX, clientY) {
   }
 
   const previewEl = ensurePreviewObject();
-  const placement = getSnappedPlacement(clientX, clientY);
+  const placement = getSnappedPlacement(
+    clientX,
+    clientY,
+    activeObject.placedWidth,
+    activeObject.placedHeight,
+  );
   const isBlocked =
-    placement.isPlaceable && overlapsExistingPlacement(placement.x, placement.y);
+    placement.isInsideBounds &&
+    overlapsExistingPlacement(
+      placement.x,
+      placement.y,
+      activeObject.placedWidth,
+      activeObject.placedHeight,
+    );
 
   previewEl.style.left = `${placement.x}px`;
   previewEl.style.top = `${placement.y}px`;
-  previewEl.classList.toggle("is-visible", placement.isPlaceable);
-  previewEl.classList.toggle("is-blocked", isBlocked);
+  previewEl.classList.toggle("is-visible", placement.isInsideBounds);
+  previewEl.classList.toggle("is-blocked", placement.isInsideBounds && isBlocked);
 }
 
 function placeObject(clientX, clientY) {
@@ -504,17 +712,32 @@ function handlePlacementDragMove(event) {
   const snappedPlacement = getSnappedPlacement(
     event.clientX,
     event.clientY,
+    activePlacementDrag.placement.width,
+    activePlacementDrag.placement.height,
+  );
+  const pointerPosition = getSnappedPosition(
+    event.clientX,
+    event.clientY,
     activePlacementDrag.offsetX,
     activePlacementDrag.offsetY,
   );
 
-  activePlacementDrag.previewX = snappedPlacement.x;
-  activePlacementDrag.previewY = snappedPlacement.y;
+  activePlacementDrag.previewX = pointerPosition.x;
+  activePlacementDrag.previewY = pointerPosition.y;
   activePlacementDrag.isValidDrop =
-    snappedPlacement.isInsideBounds &&
+    pointerPosition.x >= activePlacementDrag.placement.width / 2 &&
+    pointerPosition.x <=
+      activePlacementDrag.objectEl.parentElement.getBoundingClientRect().width -
+        activePlacementDrag.placement.width / 2 &&
+    pointerPosition.y >= activePlacementDrag.placement.height / 2 &&
+    pointerPosition.y <=
+      activePlacementDrag.objectEl.parentElement.getBoundingClientRect().height -
+        activePlacementDrag.placement.height / 2 &&
     !overlapsExistingPlacement(
-      snappedPlacement.x,
-      snappedPlacement.y,
+      pointerPosition.x,
+      pointerPosition.y,
+      activePlacementDrag.placement.width,
+      activePlacementDrag.placement.height,
       activePlacementDrag.placement,
     );
 
@@ -524,8 +747,8 @@ function handlePlacementDragMove(event) {
   );
   updatePlacedObjectPosition(
     activePlacementDrag.placement,
-    snappedPlacement.x,
-    snappedPlacement.y,
+    pointerPosition.x,
+    pointerPosition.y,
   );
 }
 
