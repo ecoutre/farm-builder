@@ -6,12 +6,12 @@ const PLACE_GRID_SIZE = 12;
 const PLACED_OBJECT_SIZE = 40;
 
 const FARM_OBJECTS = [
-  { id: "barn", label: "Barn", icon: "🏠" },
-  { id: "coop", label: "Coop", icon: "🐔" },
-  { id: "silo", label: "Silo", icon: "🛢️" },
-  { id: "tree", label: "Tree", icon: "🌳" },
-  { id: "crop", label: "Crops", icon: "🌾" },
-  { id: "pond", label: "Pond", icon: "💧" },
+  { id: "barn", label: "Barn", imageSrc: "./src/assets/sprites/barn.png" },
+  { id: "fence", label: "Fence", imageSrc: "./src/assets/sprites/fence.png" },
+  { id: "hay-bale", label: "Hay Bale", imageSrc: "./src/assets/sprites/hay-bale.png" },
+  { id: "cow", label: "Cow", imageSrc: "./src/assets/sprites/cow.png" },
+  { id: "chicken", label: "Chicken", imageSrc: "./src/assets/sprites/chicken.png" },
+  { id: "apple-tree", label: "Apple Tree", imageSrc: "./src/assets/sprites/apple-tree.png" },
 ];
 
 const state = {
@@ -246,7 +246,7 @@ function renderToolbar() {
     button.setAttribute("aria-label", `Select ${farmObject.label}`);
     button.innerHTML = `
       <span class="farm-object-button__icon" aria-hidden="true">
-        ${farmObject.icon}
+        <img src="${farmObject.imageSrc}" alt="" draggable="false" style="width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated;" />
       </span>
     `;
     button.addEventListener("click", () => setActiveObject(farmObject.id));
@@ -261,7 +261,17 @@ function renderPlacedObject(placement) {
   const { placementLayer } = getUIRefs();
   const objectEl = document.createElement("div");
   objectEl.className = "placed-object";
-  objectEl.textContent = placement.icon;
+  
+  const img = document.createElement("img");
+  img.src = placement.imageSrc;
+  img.alt = "";
+  img.draggable = false;
+  img.style.width = "100%";
+  img.style.height = "100%";
+  img.style.objectFit = "contain";
+  img.style.imageRendering = "pixelated";
+  
+  objectEl.appendChild(img);
   objectEl.setAttribute("aria-label", `${placement.label} placed`);
   objectEl.style.left = `${placement.x}px`;
   objectEl.style.top = `${placement.y}px`;
@@ -331,7 +341,7 @@ function placeObject(clientX, clientY) {
   const placedObject = {
     id: activeObject.id,
     label: activeObject.label,
-    icon: activeObject.icon,
+    imageSrc: activeObject.imageSrc,
     x: placement.x,
     y: placement.y,
   };

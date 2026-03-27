@@ -44,10 +44,8 @@ body {
   place-items: center;
   transform: translate(-50%, -50%);
   font-size: 1.2rem;
-  border: 2px solid #1c1c1c;
-  background: #eaf5e4;
-  box-shadow: 4px 4px 0 #2e2e2e;
   image-rendering: pixelated;
+  filter: drop-shadow(0 3px 0 rgba(21, 30, 16, 0.35));
 }
 
 .game-layer {
@@ -172,34 +170,34 @@ body {
   --tile-dark: #8f4135;
 }
 
-.farm-object-button--crop {
-  --tile-face: #d1b44f;
+.farm-object-button--fence {
+  --tile-face: #d7b47c;
+  --tile-light: #e8cb9a;
+  --tile-dark: #9f7743;
+}
+
+.farm-object-button--hay-bale {
+  --tile-face: #d7b245;
   --tile-light: #ebd47a;
-  --tile-dark: #8e7530;
+  --tile-dark: #8d7027;
 }
 
-.farm-object-button--coop {
-  --tile-face: #d98d3d;
-  --tile-light: #ecac64;
-  --tile-dark: #925a24;
+.farm-object-button--cow {
+  --tile-face: #c9cbc8;
+  --tile-light: #eceeeb;
+  --tile-dark: #8f948b;
 }
 
-.farm-object-button--silo {
-  --tile-face: #8f9fb5;
-  --tile-light: #afbdd0;
-  --tile-dark: #5d6d82;
+.farm-object-button--chicken {
+  --tile-face: #e2c286;
+  --tile-light: #f3d9a8;
+  --tile-dark: #9f7d46;
 }
 
-.farm-object-button--tree {
-  --tile-face: #66a056;
-  --tile-light: #88be74;
-  --tile-dark: #406e37;
-}
-
-.farm-object-button--pond {
-  --tile-face: #4f99c9;
-  --tile-light: #74bbe3;
-  --tile-dark: #306886;
+.farm-object-button--apple-tree {
+  --tile-face: #74a95e;
+  --tile-light: #97c97e;
+  --tile-dark: #4b763d;
 }
 
 @media (max-width: 700px) {
