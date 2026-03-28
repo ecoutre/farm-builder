@@ -5,7 +5,6 @@ const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
 const PLACED_OBJECT_BASE_SIZE = 40;
 const PLACED_OBJECT_SCALE_UP = 2;
-const SKY_HEIGHT_RATIO = 0.32;
 const FARM_OBJECTS = [
   {
     id: "barn",
@@ -65,7 +64,11 @@ const SOURCE_TILE_SIZE = 32;
 const TILE_SCALE = 3;
 const TILE_DRAW_SIZE = SOURCE_TILE_SIZE * TILE_SCALE;
 const GRASS_PALETTE = ["#5e9345", "#679c4b", "#70a852", "#7eb760", "#8bc96b"];
+const DIRT_PALETTE = ["#b8894e", "#c4985c", "#d0a868", "#c09058", "#a87840", "#ddb878"];
+const DIRT_PATCH_W_RATIO = 0.44;
+const DIRT_PATCH_H_RATIO = 0.46;
 let cachedGrassTiles = null;
+let cachedDirtTiles = null;
 const BLADE_STAMPS = [
   {
     blade: [
@@ -214,28 +217,114 @@ function getGrassTiles() {
   return cachedGrassTiles;
 }
 
-function getFarmTop(height) {
-  return Math.round(height * SKY_HEIGHT_RATIO);
+function createDirtTile(seedOffset) {
+  const tile = document.createElement("canvas");
+  tile.width = SOURCE_TILE_SIZE;
+  tile.height = SOURCE_TILE_SIZE;
+  const tileCtx = tile.getContext("2d");
+  if (!tileCtx) {
+    throw new Error("Failed to create dirt tile context.");
+  }
+
+  tileCtx.imageSmoothingEnabled = false;
+  tileCtx.fillStyle = DIRT_PALETTE[1];
+  tileCtx.fillRect(0, 0, SOURCE_TILE_SIZE, SOURCE_TILE_SIZE);
+
+  for (let y = 0; y < SOURCE_TILE_SIZE; y += 1) {
+    for (let x = 0; x < SOURCE_TILE_SIZE; x += 1) {
+      const macro = hash2D(
+        Math.floor((x + seedOffset * 3) / 4),
+        Math.floor((y + seedOffset * 5) / 4),
+      );
+      let colorIndex = 1;
+      if (macro > 0.68) colorIndex = 2;
+      else if (macro < 0.28) colorIndex = 0;
+
+      const micro = hash2D(x + seedOffset * 17, y + seedOffset * 23);
+      if (micro > 0.94) colorIndex = 5;
+      else if (micro < 0.04) colorIndex = 4;
+
+      tileCtx.fillStyle = DIRT_PALETTE[colorIndex];
+      tileCtx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  for (let y = 0; y < SOURCE_TILE_SIZE; y += 3) {
+    for (let x = 0; x < SOURCE_TILE_SIZE; x += 3) {
+      const pebble = hash2D(x + seedOffset * 41, y + seedOffset * 53);
+      if (pebble > 0.97) {
+        tileCtx.fillStyle = DIRT_PALETTE[3];
+        tileCtx.fillRect(x, y, 2, 1);
+        tileCtx.fillStyle = DIRT_PALETTE[4];
+        tileCtx.fillRect(x, y + 1, 2, 1);
+      }
+    }
+  }
+
+  return tile;
+}
+
+function getDirtTiles() {
+  if (!cachedDirtTiles) {
+    cachedDirtTiles = [5, 6, 7].map((seedOffset) => createDirtTile(seedOffset));
+  }
+  return cachedDirtTiles;
+}
+
+function drawDirtPatch(ctx, width, height) {
+  const patchW = Math.round(width * DIRT_PATCH_W_RATIO);
+  const patchH = Math.round(height * DIRT_PATCH_H_RATIO);
+  const patchX = Math.round((width - patchW) / 2);
+  const patchY = Math.round((height - patchH) / 2);
+
+  const dirtTiles = getDirtTiles();
+  const cols = Math.ceil(patchW / TILE_DRAW_SIZE);
+  const rows = Math.ceil(patchH / TILE_DRAW_SIZE);
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.beginPath();
+  ctx.rect(patchX, patchY, patchW, patchH);
+  ctx.clip();
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const tileIndex = Math.floor(hash2D(col + 3, row + 7) * dirtTiles.length);
+      ctx.drawImage(
+        dirtTiles[tileIndex],
+        patchX + col * TILE_DRAW_SIZE,
+        patchY + row * TILE_DRAW_SIZE,
+        TILE_DRAW_SIZE,
+        TILE_DRAW_SIZE,
+      );
+    }
+  }
+
+  ctx.restore();
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+
+  const borderW = 6;
+  const edgeLight = "#c4985c";
+  const edgeDark = "#7a5428";
+
+  ctx.fillStyle = edgeLight;
+  ctx.fillRect(patchX, patchY, patchW, borderW);
+  ctx.fillRect(patchX, patchY, borderW, patchH);
+
+  ctx.fillStyle = edgeDark;
+  ctx.fillRect(patchX, patchY + patchH - borderW, patchW, borderW);
+  ctx.fillRect(patchX + patchW - borderW, patchY, borderW, patchH);
+
+  ctx.restore();
 }
 
 function drawBackground(ctx, width, height) {
-  const farmTop = getFarmTop(height);
-  const skyGradient = ctx.createLinearGradient(0, 0, 0, farmTop);
-  skyGradient.addColorStop(0, "#78c6ff");
-  skyGradient.addColorStop(1, "#d9f4ff");
-  ctx.fillStyle = skyGradient;
-  ctx.fillRect(0, 0, width, farmTop);
-  ctx.fillStyle = "#d8e9a0";
-  ctx.fillRect(0, Math.max(0, farmTop - 8), width, 8);
-
   const tiles = getGrassTiles();
   const cols = Math.ceil(width / TILE_DRAW_SIZE);
   const rows = Math.ceil(height / TILE_DRAW_SIZE);
   ctx.imageSmoothingEnabled = false;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, farmTop, width, Math.max(0, height - farmTop));
-  ctx.clip();
 
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
@@ -252,7 +341,7 @@ function drawBackground(ctx, width, height) {
     }
   }
 
-  ctx.restore();
+  drawDirtPatch(ctx, width, height);
 }
 
 function getUIRefs() {
