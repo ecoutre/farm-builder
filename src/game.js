@@ -72,12 +72,15 @@ const FARMER_SPEED = 2.5;
 const FARMER_HITBOX_W = 20;
 const FARMER_HITBOX_H = 14;
 
+const FARMER_SPRITE_URL = "./src/assets/sprites/farmer.png";
+const FARMER_PITCHFORK_SPRITE_URL = "./src/assets/sprites/farmer-pitchfork.png";
+
 const farmerState = {
   x: 0,
   y: 0,
   keys: {},
   element: null,
-  spriteUrl: "./src/assets/sprites/farmer.png",
+  hasPitchfork: false,
   initialized: false,
   direction: 0, // 0: down, 1: left, 2: up, 3: right
   frame: 0,
@@ -925,6 +928,10 @@ function setupPlacementInput() {
   });
 }
 
+function getFarmerSpriteUrl() {
+  return farmerState.hasPitchfork ? FARMER_PITCHFORK_SPRITE_URL : FARMER_SPRITE_URL;
+}
+
 function createFarmerElement() {
   const { placementLayer } = getUIRefs();
   const el = document.createElement("div");
@@ -933,12 +940,19 @@ function createFarmerElement() {
 
   el.style.width = `${FARMER_DISPLAY_W}px`;
   el.style.height = `${FARMER_DISPLAY_H}px`;
-  el.style.backgroundImage = `url(${farmerState.spriteUrl})`;
+  el.style.backgroundImage = `url(${getFarmerSpriteUrl()})`;
   el.style.backgroundSize = `${FARMER_DISPLAY_W * 4}px ${FARMER_DISPLAY_H * 4}px`;
   el.style.backgroundRepeat = "no-repeat";
   
   placementLayer.appendChild(el);
   farmerState.element = el;
+}
+
+function togglePitchfork() {
+  farmerState.hasPitchfork = !farmerState.hasPitchfork;
+  if (farmerState.element) {
+    farmerState.element.style.backgroundImage = `url(${getFarmerSpriteUrl()})`;
+  }
 }
 
 function initFarmer() {
@@ -1055,6 +1069,9 @@ function setupFarmerInput() {
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "a", "w", "s", "d"].includes(e.key)) {
       e.preventDefault();
       farmerState.keys[e.key] = true;
+    }
+    if (e.key === "p" || e.key === "P") {
+      togglePitchfork();
     }
   });
   window.addEventListener("keyup", (e) => {
