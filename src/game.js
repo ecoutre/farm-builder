@@ -63,14 +63,14 @@ let activePlacementDrag = null;
 const T = 16;
 const TILE_DRAW_SIZE = T;
 
-const FARMER_SPRITE_W = 48;
-const FARMER_SPRITE_H = 48;
-const FARMER_SCALE = 1.5;
+const FARMER_SPRITE_W = 16;
+const FARMER_SPRITE_H = 24;
+const FARMER_SCALE = 2.5;
 const FARMER_DISPLAY_W = FARMER_SPRITE_W * FARMER_SCALE;
 const FARMER_DISPLAY_H = FARMER_SPRITE_H * FARMER_SCALE;
 const FARMER_SPEED = 2.5;
-const FARMER_HITBOX_W = 24 * FARMER_SCALE;
-const FARMER_HITBOX_H = 16 * FARMER_SCALE;
+const FARMER_HITBOX_W = 12 * FARMER_SCALE;
+const FARMER_HITBOX_H = 10 * FARMER_SCALE;
 
 const farmerState = {
   x: 0,
