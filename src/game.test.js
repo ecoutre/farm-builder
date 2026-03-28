@@ -3,11 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 function installDom() {
   document.body.innerHTML = `
     <main id="game-view" class="game-view" aria-label="Farm game view">
-      <canvas
-        id="farm-background"
-        class="background-layer"
-        aria-label="Farm ground background"
-      ></canvas>
       <section
         id="placement-layer"
         class="placement-layer"
@@ -25,9 +20,8 @@ function installDom() {
   `;
 
   const view = document.getElementById("game-view");
-  const canvas = document.getElementById("farm-background");
 
-  if (!view || !canvas) {
+  if (!view) {
     throw new Error("Expected game view markup to be installed.");
   }
 
@@ -41,23 +35,6 @@ function installDom() {
   };
 
   view.getBoundingClientRect = () => bounds;
-  canvas.getBoundingClientRect = () => bounds;
-  HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
-    imageSmoothingEnabled: false,
-    fillStyle: "",
-    save: vi.fn(),
-    restore: vi.fn(),
-    beginPath: vi.fn(),
-    rect: vi.fn(),
-    clip: vi.fn(),
-    fillRect: vi.fn(),
-    clearRect: vi.fn(),
-    setTransform: vi.fn(),
-    drawImage: vi.fn(),
-    createLinearGradient: vi.fn(() => ({
-      addColorStop: vi.fn(),
-    })),
-  }));
 }
 
 function dispatchPointerMove(target, clientX, clientY) {
@@ -89,14 +66,14 @@ describe("toolbar placement flow", () => {
     init();
 
     const toolbarButton = document.querySelector('[data-object-id="barn"]');
-    const canvas = document.getElementById("farm-background");
+    const view = document.getElementById("game-view");
 
-    if (!(toolbarButton instanceof HTMLButtonElement) || !(canvas instanceof HTMLCanvasElement)) {
-      throw new Error("Expected toolbar button and canvas to exist.");
+    if (!(toolbarButton instanceof HTMLButtonElement) || !view) {
+      throw new Error("Expected toolbar button and game view to exist.");
     }
 
     toolbarButton.click();
-    dispatchPointerMove(canvas, 300, 300);
+    dispatchPointerMove(view, 300, 300);
 
     const placementLayer = document.getElementById("placement-layer");
     const preview = placementLayer?.querySelector(".placement-preview");
@@ -108,7 +85,7 @@ describe("toolbar placement flow", () => {
     expect(preview?.style.top).toBe("300px");
     expect(placementLayer?.lastElementChild).toBe(preview);
 
-    dispatchClick(canvas, 300, 300);
+    dispatchClick(view, 300, 300);
 
     const placedObjects = placementLayer?.querySelectorAll(
       '.placed-object:not(.placement-preview)',

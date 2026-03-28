@@ -1,5 +1,4 @@
 const VIEW_ID = "game-view";
-const BACKGROUND_ID = "farm-background";
 const TOOLBAR_ID = "toolbar-buttons";
 const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
@@ -441,6 +440,16 @@ function drawBackground(ctx, width, height) {
   drawGrassTufts(ctx, map, cols, rows);
 }
 
+function getView() {
+  const view = document.getElementById(VIEW_ID);
+
+  if (!view) {
+    throw new Error("Game view is missing.");
+  }
+
+  return view;
+}
+
 function getUIRefs() {
   const toolbarButtons = document.getElementById(TOOLBAR_ID);
   const placementLayer = document.getElementById(PLACEMENT_LAYER_ID);
@@ -672,7 +681,7 @@ function getSnappedPlacement(
   offsetX = 0,
   offsetY = 0,
 ) {
-  const { view } = getViewAndCanvas();
+  const view = getView();
   const bounds = view.getBoundingClientRect();
   const relativeX = clientX - bounds.left - offsetX;
   const relativeY = clientY - bounds.top - offsetY;
@@ -771,7 +780,7 @@ function startPlacementDrag(placement, objectEl, event) {
 
   event.preventDefault();
 
-  const { view } = getViewAndCanvas();
+  const view = getView();
   const bounds = view.getBoundingClientRect();
   activePlacementDrag = {
     placement,
@@ -864,26 +873,25 @@ function endPlacementDrag(event) {
 }
 
 function setupPlacementInput() {
-  const { canvas } = getViewAndCanvas();
+  const view = getView();
 
-  canvas.addEventListener("pointermove", (event) => {
+  view.addEventListener("pointermove", (event) => {
     state.preview.clientX = event.clientX;
     state.preview.clientY = event.clientY;
     state.preview.isPointerActive = true;
     updatePlacementPreview(event.clientX, event.clientY);
   });
 
-  canvas.addEventListener("pointerleave", () => {
+  view.addEventListener("pointerleave", () => {
     state.preview.isPointerActive = false;
     hidePlacementPreview();
   });
 
-  canvas.addEventListener("click", (event) => {
+  view.addEventListener("click", (event) => {
     state.preview.clientX = event.clientX;
     state.preview.clientY = event.clientY;
 
     if (placeObject(event.clientX, event.clientY)) {
-      // Keep the freshly placed object visible until the pointer moves again.
       state.preview.isPointerActive = false;
       hidePlacementPreview();
       return;
@@ -894,27 +902,7 @@ function setupPlacementInput() {
   });
 }
 
-function resizeAndRender() {
-  const { view, canvas } = getViewAndCanvas();
-  const bounds = view.getBoundingClientRect();
-  const width = Math.max(1, Math.round(bounds.width));
-  const height = Math.max(1, Math.round(bounds.height));
-  const pixelRatio = window.devicePixelRatio || 1;
-
-  canvas.width = Math.round(width * pixelRatio);
-  canvas.height = Math.round(height * pixelRatio);
-  canvas.style.width = `${Math.round(width)}px`;
-  canvas.style.height = `${Math.round(height)}px`;
-
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("Failed to get 2D rendering context.");
-  }
-
-  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-  ctx.clearRect(0, 0, width, height);
-  drawBackground(ctx, width, height);
-
+function handleResize() {
   if (state.preview.isPointerActive) {
     updatePlacementPreview(state.preview.clientX, state.preview.clientY);
   }
@@ -925,8 +913,8 @@ export function init() {
   syncPreviewObject();
   setActiveObject(state.activeObjectId);
   setupPlacementInput();
-  resizeAndRender();
-  window.addEventListener("resize", resizeAndRender);
+  handleResize();
+  window.addEventListener("resize", handleResize);
 }
 
 if (typeof window !== "undefined") {
