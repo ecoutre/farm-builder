@@ -5,7 +5,7 @@ const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
 const PLACED_OBJECT_BASE_SIZE = 40;
 const PLACED_OBJECT_SCALE_UP = 2;
-const SKY_HEIGHT_RATIO = 0.32;
+const SKY_HEIGHT_RATIO = 0;
 const FARM_OBJECTS = [
   {
     id: "barn",
@@ -64,8 +64,10 @@ let activePlacementDrag = null;
 const SOURCE_TILE_SIZE = 32;
 const TILE_SCALE = 3;
 const TILE_DRAW_SIZE = SOURCE_TILE_SIZE * TILE_SCALE;
-const GRASS_PALETTE = ["#5e9345", "#679c4b", "#70a852", "#7eb760", "#8bc96b"];
+const GRASS_PALETTE = ["#3a7d22", "#45892b", "#4e9632", "#56a33a", "#61b043"];
+const DIRT_PALETTE = ["#c89848", "#d4a44e", "#ba8c3e", "#deb060", "#c69844"];
 let cachedGrassTiles = null;
+let cachedDirtTiles = null;
 const BLADE_STAMPS = [
   {
     blade: [
@@ -206,6 +208,59 @@ function createGrassTile(seedOffset) {
   return tile;
 }
 
+function createDirtTile(seedOffset) {
+  const tile = document.createElement("canvas");
+  tile.width = SOURCE_TILE_SIZE;
+  tile.height = SOURCE_TILE_SIZE;
+
+  const tileCtx = tile.getContext("2d");
+  if (!tileCtx) {
+    throw new Error("Failed to create dirt tile context.");
+  }
+
+  tileCtx.imageSmoothingEnabled = false;
+  tileCtx.fillStyle = DIRT_PALETTE[0];
+  tileCtx.fillRect(0, 0, SOURCE_TILE_SIZE, SOURCE_TILE_SIZE);
+
+  for (let y = 0; y < SOURCE_TILE_SIZE; y += 1) {
+    for (let x = 0; x < SOURCE_TILE_SIZE; x += 1) {
+      const macro = hash2D(
+        Math.floor((x + seedOffset * 5) / 4),
+        Math.floor((y + seedOffset * 7) / 4),
+      );
+      let colorIndex = 0;
+
+      if (macro > 0.7) {
+        colorIndex = 1;
+      } else if (macro < 0.25) {
+        colorIndex = 2;
+      }
+
+      const detail = hash2D(x + seedOffset * 13, y + seedOffset * 17);
+      if (detail > 0.92) {
+        colorIndex = 3;
+      } else if (detail < 0.04) {
+        colorIndex = 4;
+      }
+
+      tileCtx.fillStyle = DIRT_PALETTE[colorIndex];
+      tileCtx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  for (let y = 0; y < SOURCE_TILE_SIZE; y += 3) {
+    for (let x = 0; x < SOURCE_TILE_SIZE; x += 3) {
+      const speck = hash2D(x + seedOffset * 41, y + seedOffset * 43);
+      if (speck > 0.96) {
+        tileCtx.fillStyle = "#b08030";
+        tileCtx.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+
+  return tile;
+}
+
 function getGrassTiles() {
   if (!cachedGrassTiles) {
     cachedGrassTiles = [0, 1, 2].map((seedOffset) => createGrassTile(seedOffset));
@@ -214,45 +269,141 @@ function getGrassTiles() {
   return cachedGrassTiles;
 }
 
+function getDirtTiles() {
+  if (!cachedDirtTiles) {
+    cachedDirtTiles = [0, 1, 2].map((seedOffset) => createDirtTile(seedOffset));
+  }
+
+  return cachedDirtTiles;
+}
+
 function getFarmTop(height) {
   return Math.round(height * SKY_HEIGHT_RATIO);
 }
 
-function drawBackground(ctx, width, height) {
+const DIRT_PLOT = {
+  marginXRatio: 0.12,
+  marginTopRatio: 0.10,
+  marginBottomRatio: 0.15,
+};
+
+function getDirtRect(width, height) {
   const farmTop = getFarmTop(height);
-  const skyGradient = ctx.createLinearGradient(0, 0, 0, farmTop);
-  skyGradient.addColorStop(0, "#78c6ff");
-  skyGradient.addColorStop(1, "#d9f4ff");
-  ctx.fillStyle = skyGradient;
-  ctx.fillRect(0, 0, width, farmTop);
-  ctx.fillStyle = "#d8e9a0";
-  ctx.fillRect(0, Math.max(0, farmTop - 8), width, 8);
+  const farmHeight = height - farmTop;
+  const plotLeft = Math.round(width * DIRT_PLOT.marginXRatio);
+  const plotTop = farmTop + Math.round(farmHeight * DIRT_PLOT.marginTopRatio);
+  const plotRight = Math.round(width * (1 - DIRT_PLOT.marginXRatio));
+  const plotBottom = height - Math.round(farmHeight * DIRT_PLOT.marginBottomRatio);
 
-  const tiles = getGrassTiles();
-  const cols = Math.ceil(width / TILE_DRAW_SIZE);
-  const rows = Math.ceil(height / TILE_DRAW_SIZE);
-  ctx.imageSmoothingEnabled = false;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, farmTop, width, Math.max(0, height - farmTop));
-  ctx.clip();
+  return {
+    x: plotLeft,
+    y: plotTop,
+    w: plotRight - plotLeft,
+    h: plotBottom - plotTop,
+  };
+}
 
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
-      const tileIndex = Math.floor(hash2D(col + 11, row + 19) * tiles.length);
-      const tile = tiles[tileIndex];
+function drawDirtEdge(ctx, dirtRect) {
+  const edgeSize = 6;
+  const { x, y, w, h } = dirtRect;
 
-      ctx.drawImage(
-        tile,
-        col * TILE_DRAW_SIZE,
-        row * TILE_DRAW_SIZE,
-        TILE_DRAW_SIZE,
-        TILE_DRAW_SIZE,
-      );
+  for (let i = 0; i < edgeSize; i++) {
+    const alpha = 0.35 * (1 - i / edgeSize);
+    ctx.fillStyle = `rgba(90, 65, 20, ${alpha})`;
+
+    ctx.fillRect(x + i, y + i, w - i * 2, 1);
+    ctx.fillRect(x + i, y + h - 1 - i, w - i * 2, 1);
+    ctx.fillRect(x + i, y + i, 1, h - i * 2);
+    ctx.fillRect(x + w - 1 - i, y + i, 1, h - i * 2);
+  }
+
+  const cornerRadius = 8;
+  for (let cy = 0; cy < cornerRadius; cy++) {
+    for (let cx = 0; cx < cornerRadius; cx++) {
+      const dist = Math.sqrt(cx * cx + cy * cy);
+      if (dist > cornerRadius - 2 && dist < cornerRadius + 3) {
+        const alpha = 0.15 * Math.max(0, 1 - Math.abs(dist - cornerRadius) / 3);
+        ctx.fillStyle = `rgba(60, 45, 15, ${alpha})`;
+        ctx.fillRect(x - cx + cornerRadius, y - cy + cornerRadius, 1, 1);
+        ctx.fillRect(x + w + cx - cornerRadius, y - cy + cornerRadius, 1, 1);
+        ctx.fillRect(x - cx + cornerRadius, y + h + cy - cornerRadius, 1, 1);
+        ctx.fillRect(x + w + cx - cornerRadius, y + h + cy - cornerRadius, 1, 1);
+      }
+    }
+  }
+}
+
+function drawGrassEdgeDetails(ctx, dirtRect) {
+  const { x, y, w, h } = dirtRect;
+  const edgeSeed = 73;
+
+  for (let i = 0; i < w; i += 3) {
+    const topH = hash2D(i + edgeSeed, 0);
+    if (topH > 0.5) {
+      const depth = Math.floor(topH * 5) + 1;
+      ctx.fillStyle = GRASS_PALETTE[Math.floor(topH * GRASS_PALETTE.length)];
+      ctx.fillRect(x + i, y - depth, 2, depth);
+    }
+
+    const bottomH = hash2D(i + edgeSeed, h);
+    if (bottomH > 0.5) {
+      const depth = Math.floor(bottomH * 5) + 1;
+      ctx.fillStyle = GRASS_PALETTE[Math.floor(bottomH * GRASS_PALETTE.length)];
+      ctx.fillRect(x + i, y + h, 2, depth);
     }
   }
 
+  for (let j = 0; j < h; j += 3) {
+    const leftH = hash2D(0, j + edgeSeed);
+    if (leftH > 0.5) {
+      const depth = Math.floor(leftH * 5) + 1;
+      ctx.fillStyle = GRASS_PALETTE[Math.floor(leftH * GRASS_PALETTE.length)];
+      ctx.fillRect(x - depth, y + j, depth, 2);
+    }
+
+    const rightH = hash2D(w, j + edgeSeed);
+    if (rightH > 0.5) {
+      const depth = Math.floor(rightH * 5) + 1;
+      ctx.fillStyle = GRASS_PALETTE[Math.floor(rightH * GRASS_PALETTE.length)];
+      ctx.fillRect(x + w, y + j, depth, 2);
+    }
+  }
+}
+
+function drawBackground(ctx, width, height) {
+  const grassTiles = getGrassTiles();
+  const dirtTiles = getDirtTiles();
+  const cols = Math.ceil(width / TILE_DRAW_SIZE);
+  const rows = Math.ceil(height / TILE_DRAW_SIZE);
+  ctx.imageSmoothingEnabled = false;
+
+  const dirtRect = getDirtRect(width, height);
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const tileX = col * TILE_DRAW_SIZE;
+      const tileY = row * TILE_DRAW_SIZE;
+      const tileIndex = Math.floor(hash2D(col + 11, row + 19) * grassTiles.length);
+      ctx.drawImage(grassTiles[tileIndex], tileX, tileY, TILE_DRAW_SIZE, TILE_DRAW_SIZE);
+    }
+  }
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(dirtRect.x, dirtRect.y, dirtRect.w, dirtRect.h);
+  ctx.clip();
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const tileX = col * TILE_DRAW_SIZE;
+      const tileY = row * TILE_DRAW_SIZE;
+      const tileIndex = Math.floor(hash2D(col + 7, row + 13) * dirtTiles.length);
+      ctx.drawImage(dirtTiles[tileIndex], tileX, tileY, TILE_DRAW_SIZE, TILE_DRAW_SIZE);
+    }
+  }
   ctx.restore();
+
+  drawDirtEdge(ctx, dirtRect);
+  drawGrassEdgeDetails(ctx, dirtRect);
 }
 
 function getUIRefs() {
