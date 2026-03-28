@@ -1,3 +1,5 @@
+import { playPlacementSound } from "./sounds.js";
+
 const VIEW_ID = "game-view";
 const BACKGROUND_ID = "farm-background";
 const TOOLBAR_ID = "toolbar-buttons";
@@ -771,6 +773,7 @@ function placeObject(clientX, clientY) {
 
   state.placements.push(placedObject);
   renderPlacedObject(placedObject);
+  playPlacementSound(activeObject.id);
   return true;
 }
 
