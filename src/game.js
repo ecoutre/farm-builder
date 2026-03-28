@@ -63,6 +63,24 @@ let activePlacementDrag = null;
 const T = 16;
 const TILE_DRAW_SIZE = T;
 
+const FARMER_SPRITE_W = 16;
+const FARMER_SPRITE_H = 22;
+const FARMER_SCALE = 2;
+const FARMER_DISPLAY_W = FARMER_SPRITE_W * FARMER_SCALE;
+const FARMER_DISPLAY_H = FARMER_SPRITE_H * FARMER_SCALE;
+const FARMER_SPEED = 2.5;
+const FARMER_HITBOX_W = FARMER_DISPLAY_W * 0.7;
+const FARMER_HITBOX_H = FARMER_DISPLAY_H * 0.36;
+
+const farmerState = {
+  x: 0,
+  y: 0,
+  keys: {},
+  element: null,
+  spriteUrl: null,
+  initialized: false,
+};
+
 const GP = ["#3d6b1e", "#4a7a28", "#5a8c30", "#77a34f", "#8fbc5b"];
 const DP = ["#c8a850", "#d4b45a", "#dfc070"];
 const FP = ["#7a9030", "#98b048"];
@@ -903,6 +921,210 @@ function setupPlacementInput() {
   });
 }
 
+function buildFarmerSprite() {
+  const w = FARMER_SPRITE_W;
+  const h = FARMER_SPRITE_H;
+  const cvs = document.createElement("canvas");
+  cvs.width = w;
+  cvs.height = h;
+  const c = cvs.getContext("2d");
+  if (!c) throw new Error("Failed to create farmer sprite context.");
+  c.imageSmoothingEnabled = false;
+
+  const hat = "#c8a850";
+  const hatBand = "#8b5e2f";
+  const skin = "#f5c8a0";
+  const hair = "#5c3a1e";
+  const shirt = "#4a7a28";
+  const overall = "#5b8fd4";
+  const belt = "#3a2314";
+  const boot = "#5c3a1e";
+
+  const pixels = [
+    "......HHHHHH....",
+    ".....HHHHHHHH...",
+    "....HhHHHHHhH..",
+    "....hhhhhhhhhh..",
+    ".....rSSSSSSr...",
+    ".....SSSSSSSS...",
+    "......SeeSes....",
+    "......SSSSSS....",
+    ".......SmSS.....",
+    ".......SSSS.....",
+    "......GGGGGG....",
+    ".....GGGGGGGG...",
+    "..ss.GGGGGGGG.s.",
+    "..sssGGbGGbGGss.",
+    "...ssGGGGGGGGs..",
+    "......GGGGGG....",
+    "......OOOOOO....",
+    "......OOOOOO....",
+    ".....OOO.OOO....",
+    ".....OOO.OOO....",
+    ".....BBB.BBB....",
+    "....BBBB.BBBB...",
+  ];
+
+  const colorMap = {
+    H: hat,
+    h: hatBand,
+    S: skin,
+    r: hair,
+    e: "#2d1a0a",
+    m: "#c27a5a",
+    G: shirt,
+    b: belt,
+    O: overall,
+    B: boot,
+    s: skin,
+  };
+
+  for (let row = 0; row < h; row++) {
+    const line = pixels[row] || "";
+    for (let col = 0; col < w; col++) {
+      const ch = line[col];
+      if (ch && ch !== "." && colorMap[ch]) {
+        c.fillStyle = colorMap[ch];
+        c.fillRect(col, row, 1, 1);
+      }
+    }
+  }
+
+  return cvs.toDataURL();
+}
+
+function createFarmerElement() {
+  const { placementLayer } = getUIRefs();
+  const el = document.createElement("div");
+  el.className = "farmer-character";
+  el.setAttribute("aria-label", "Farmer");
+
+  if (!farmerState.spriteUrl) {
+    farmerState.spriteUrl = buildFarmerSprite();
+  }
+
+  const img = document.createElement("img");
+  img.src = farmerState.spriteUrl;
+  img.alt = "";
+  img.draggable = false;
+  img.style.width = "100%";
+  img.style.height = "100%";
+  img.style.objectFit = "contain";
+  img.style.imageRendering = "pixelated";
+  el.appendChild(img);
+
+  el.style.width = `${FARMER_DISPLAY_W}px`;
+  el.style.height = `${FARMER_DISPLAY_H}px`;
+  placementLayer.appendChild(el);
+  farmerState.element = el;
+}
+
+function initFarmer() {
+  const view = getView();
+  const bounds = view.getBoundingClientRect();
+  farmerState.x = bounds.width / 2;
+  farmerState.y = bounds.height / 2;
+  createFarmerElement();
+  updateFarmerPosition();
+  farmerState.initialized = true;
+}
+
+function updateFarmerPosition() {
+  if (!farmerState.element) return;
+  farmerState.element.style.left = `${farmerState.x}px`;
+  farmerState.element.style.top = `${farmerState.y}px`;
+}
+
+function getFarmerFootprint(cx, cy) {
+  const halfW = FARMER_HITBOX_W / 2;
+  const halfH = FARMER_HITBOX_H / 2;
+  const bottomY = cy + FARMER_DISPLAY_H / 2;
+  return {
+    left: cx - halfW,
+    right: cx + halfW,
+    top: bottomY - FARMER_HITBOX_H,
+    bottom: bottomY,
+  };
+}
+
+function farmerCollidesWithPlacements(cx, cy) {
+  const fp = getFarmerFootprint(cx, cy);
+  return state.placements.some((p) => {
+    const pf = getPlacementFootprint(p.x, p.y, p.width, p.height);
+    return !(
+      fp.right <= pf.left ||
+      fp.left >= pf.right ||
+      fp.bottom <= pf.top ||
+      fp.top >= pf.bottom
+    );
+  });
+}
+
+function updateFarmerMovement() {
+  if (!farmerState.initialized) return;
+
+  const { keys } = farmerState;
+  let dx = 0;
+  let dy = 0;
+  if (keys["ArrowLeft"] || keys["a"]) dx -= 1;
+  if (keys["ArrowRight"] || keys["d"]) dx += 1;
+  if (keys["ArrowUp"] || keys["w"]) dy -= 1;
+  if (keys["ArrowDown"] || keys["s"]) dy += 1;
+
+  if (dx === 0 && dy === 0) return;
+
+  if (dx !== 0 && dy !== 0) {
+    const inv = 1 / Math.SQRT2;
+    dx *= inv;
+    dy *= inv;
+  }
+
+  const nextX = farmerState.x + dx * FARMER_SPEED;
+  const nextY = farmerState.y + dy * FARMER_SPEED;
+
+  const view = getView();
+  const bounds = view.getBoundingClientRect();
+  const halfW = FARMER_DISPLAY_W / 2;
+  const halfH = FARMER_DISPLAY_H / 2;
+
+  const clampedX = Math.max(halfW, Math.min(bounds.width - halfW, nextX));
+  const clampedY = Math.max(halfH, Math.min(bounds.height - halfH, nextY));
+
+  if (!farmerCollidesWithPlacements(clampedX, clampedY)) {
+    farmerState.x = clampedX;
+    farmerState.y = clampedY;
+  } else if (!farmerCollidesWithPlacements(clampedX, farmerState.y)) {
+    farmerState.x = clampedX;
+  } else if (!farmerCollidesWithPlacements(farmerState.x, clampedY)) {
+    farmerState.y = clampedY;
+  }
+
+  updateFarmerPosition();
+}
+
+function setupFarmerInput() {
+  window.addEventListener("keydown", (e) => {
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "a", "w", "s", "d"].includes(e.key)) {
+      e.preventDefault();
+      farmerState.keys[e.key] = true;
+    }
+  });
+  window.addEventListener("keyup", (e) => {
+    farmerState.keys[e.key] = false;
+  });
+}
+
+let _gameLoopRunning = false;
+function startGameLoop() {
+  if (_gameLoopRunning) return;
+  _gameLoopRunning = true;
+  function tick() {
+    updateFarmerMovement();
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
 function resizeAndRender() {
   const view = getView();
   const canvas = document.getElementById(BACKGROUND_ID);
@@ -937,6 +1159,9 @@ export function init() {
   setupPlacementInput();
   resizeAndRender();
   window.addEventListener("resize", resizeAndRender);
+  initFarmer();
+  setupFarmerInput();
+  startGameLoop();
 }
 
 if (typeof window !== "undefined") {

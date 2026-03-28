@@ -36,6 +36,15 @@ body {
   pointer-events: none;
 }
 
+.farmer-character {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  image-rendering: pixelated;
+  pointer-events: none;
+  z-index: 10;
+  filter: drop-shadow(0 2px 0 rgba(21, 30, 16, 0.4));
+}
+
 .placed-object {
   position: absolute;
   display: grid;
