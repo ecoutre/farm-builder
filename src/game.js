@@ -66,6 +66,31 @@ let activePlacementDrag = null;
 const T = 16;
 const TILE_DRAW_SIZE = T;
 
+const FARMER_SPRITE_W = 64;
+const FARMER_SPRITE_H = 64;
+const FARMER_SCALE = 1;
+const FARMER_DISPLAY_W = FARMER_SPRITE_W * FARMER_SCALE;
+const FARMER_DISPLAY_H = FARMER_SPRITE_H * FARMER_SCALE;
+const FARMER_SPEED = 2.5;
+const FARMER_HITBOX_W = 20;
+const FARMER_HITBOX_H = 14;
+
+const FARMER_SPRITE_URL = "./src/assets/sprites/farmer.png";
+const FARMER_PITCHFORK_SPRITE_URL = "./src/assets/sprites/farmer-pitchfork.png";
+
+const farmerState = {
+  x: 0,
+  y: 0,
+  keys: {},
+  element: null,
+  hasPitchfork: false,
+  initialized: false,
+  direction: 0, // 0: down, 1: left, 2: up, 3: right
+  frame: 0,
+  isMoving: false,
+  animTimer: 0,
+};
+
 const GP = ["#3d6b1e", "#4a7a28", "#5a8c30", "#77a34f", "#8fbc5b"];
 const DP = ["#c8a850", "#d4b45a", "#dfc070"];
 const FP = ["#7a9030", "#98b048"];
@@ -924,6 +949,168 @@ function setupPlacementInput() {
   });
 }
 
+function getFarmerSpriteUrl() {
+  return farmerState.hasPitchfork ? FARMER_PITCHFORK_SPRITE_URL : FARMER_SPRITE_URL;
+}
+
+function createFarmerElement() {
+  const { placementLayer } = getUIRefs();
+  const el = document.createElement("div");
+  el.className = "farmer-character";
+  el.setAttribute("aria-label", "Farmer");
+
+  el.style.width = `${FARMER_DISPLAY_W}px`;
+  el.style.height = `${FARMER_DISPLAY_H}px`;
+  el.style.backgroundImage = `url(${getFarmerSpriteUrl()})`;
+  el.style.backgroundSize = `${FARMER_DISPLAY_W * 4}px ${FARMER_DISPLAY_H * 4}px`;
+  el.style.backgroundRepeat = "no-repeat";
+  
+  placementLayer.appendChild(el);
+  farmerState.element = el;
+}
+
+function togglePitchfork() {
+  farmerState.hasPitchfork = !farmerState.hasPitchfork;
+  if (farmerState.element) {
+    farmerState.element.style.backgroundImage = `url(${getFarmerSpriteUrl()})`;
+  }
+}
+
+function initFarmer() {
+  const view = getView();
+  const bounds = view.getBoundingClientRect();
+  farmerState.x = bounds.width / 2;
+  farmerState.y = bounds.height / 2;
+  createFarmerElement();
+  updateFarmerPosition();
+  farmerState.initialized = true;
+}
+
+function updateFarmerPosition() {
+  if (!farmerState.element) return;
+  farmerState.element.style.left = `${farmerState.x}px`;
+  farmerState.element.style.top = `${farmerState.y}px`;
+
+  const bgX = -(farmerState.frame * FARMER_DISPLAY_W);
+  const bgY = -(farmerState.direction * FARMER_DISPLAY_H);
+  farmerState.element.style.backgroundPosition = `${bgX}px ${bgY}px`;
+}
+
+function getFarmerFootprint(cx, cy) {
+  const halfW = FARMER_HITBOX_W / 2;
+  const halfH = FARMER_HITBOX_H / 2;
+  const bottomY = cy + FARMER_DISPLAY_H / 2;
+  return {
+    left: cx - halfW,
+    right: cx + halfW,
+    top: bottomY - FARMER_HITBOX_H,
+    bottom: bottomY,
+  };
+}
+
+function farmerCollidesWithPlacements(cx, cy) {
+  const fp = getFarmerFootprint(cx, cy);
+  return state.placements.some((p) => {
+    const pf = getPlacementFootprint(p.x, p.y, p.width, p.height);
+    return !(
+      fp.right <= pf.left ||
+      fp.left >= pf.right ||
+      fp.bottom <= pf.top ||
+      fp.top >= pf.bottom
+    );
+  });
+}
+
+function updateFarmerMovement() {
+  if (!farmerState.initialized) return;
+
+  const { keys } = farmerState;
+  let dx = 0;
+  let dy = 0;
+  if (keys["ArrowLeft"] || keys["a"]) dx -= 1;
+  if (keys["ArrowRight"] || keys["d"]) dx += 1;
+  if (keys["ArrowUp"] || keys["w"]) dy -= 1;
+  if (keys["ArrowDown"] || keys["s"]) dy += 1;
+
+  farmerState.isMoving = dx !== 0 || dy !== 0;
+
+  if (farmerState.isMoving) {
+    // Row order: 0=Down, 1=Left, 2=Up, 3=Right
+    if (dy > 0) farmerState.direction = 0;
+    else if (dx < 0) farmerState.direction = 1;
+    else if (dy < 0) farmerState.direction = 2;
+    else if (dx > 0) farmerState.direction = 3;
+
+    farmerState.animTimer += 1;
+    if (farmerState.animTimer > 8) {
+      farmerState.animTimer = 0;
+      farmerState.frame = (farmerState.frame + 1) % 4;
+    }
+  } else {
+    farmerState.frame = 0;
+    farmerState.animTimer = 0;
+  }
+
+  if (dx === 0 && dy === 0) {
+    updateFarmerPosition();
+    return;
+  }
+
+  if (dx !== 0 && dy !== 0) {
+    const inv = 1 / Math.SQRT2;
+    dx *= inv;
+    dy *= inv;
+  }
+
+  const nextX = farmerState.x + dx * FARMER_SPEED;
+  const nextY = farmerState.y + dy * FARMER_SPEED;
+
+  const view = getView();
+  const bounds = view.getBoundingClientRect();
+  const halfW = FARMER_DISPLAY_W / 2;
+  const halfH = FARMER_DISPLAY_H / 2;
+
+  const clampedX = Math.max(halfW, Math.min(bounds.width - halfW, nextX));
+  const clampedY = Math.max(halfH, Math.min(bounds.height - halfH, nextY));
+
+  if (!farmerCollidesWithPlacements(clampedX, clampedY)) {
+    farmerState.x = clampedX;
+    farmerState.y = clampedY;
+  } else if (!farmerCollidesWithPlacements(clampedX, farmerState.y)) {
+    farmerState.x = clampedX;
+  } else if (!farmerCollidesWithPlacements(farmerState.x, clampedY)) {
+    farmerState.y = clampedY;
+  }
+
+  updateFarmerPosition();
+}
+
+function setupFarmerInput() {
+  window.addEventListener("keydown", (e) => {
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "a", "w", "s", "d"].includes(e.key)) {
+      e.preventDefault();
+      farmerState.keys[e.key] = true;
+    }
+    if (e.key === "p" || e.key === "P") {
+      togglePitchfork();
+    }
+  });
+  window.addEventListener("keyup", (e) => {
+    farmerState.keys[e.key] = false;
+  });
+}
+
+let _gameLoopRunning = false;
+function startGameLoop() {
+  if (_gameLoopRunning) return;
+  _gameLoopRunning = true;
+  function tick() {
+    updateFarmerMovement();
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
 function resizeAndRender() {
   const view = getView();
   const canvas = document.getElementById(BACKGROUND_ID);
@@ -958,6 +1145,9 @@ export function init() {
   setupPlacementInput();
   resizeAndRender();
   window.addEventListener("resize", resizeAndRender);
+  initFarmer();
+  setupFarmerInput();
+  startGameLoop();
 }
 
 if (typeof window !== "undefined") {
