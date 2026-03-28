@@ -5,6 +5,7 @@ const BACKGROUND_ID = "farm-background";
 const TOOLBAR_ID = "toolbar-buttons";
 const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
+const PLACEMENT_OVERLAP_RATIO = 0.15;
 const PLACED_OBJECT_BASE_SIZE = 40;
 const PLACED_OBJECT_SCALE_UP = 2;
 const FARM_OBJECTS = [
@@ -647,6 +648,17 @@ function getPlacementFootprint(centerX, centerY, width, height) {
   };
 }
 
+function shrinkFootprint(footprint, ratio) {
+  const insetX = (footprint.right - footprint.left) * ratio;
+  const insetY = (footprint.bottom - footprint.top) * ratio;
+  return {
+    left: footprint.left + insetX,
+    right: footprint.right - insetX,
+    top: footprint.top + insetY,
+    bottom: footprint.bottom - insetY,
+  };
+}
+
 function overlapsExistingPlacement(
   centerX,
   centerY,
@@ -654,18 +666,24 @@ function overlapsExistingPlacement(
   height,
   excludedPlacement = null,
 ) {
-  const nextFootprint = getPlacementFootprint(centerX, centerY, width, height);
+  const nextFootprint = shrinkFootprint(
+    getPlacementFootprint(centerX, centerY, width, height),
+    PLACEMENT_OVERLAP_RATIO,
+  );
 
   return state.placements.some((placement) => {
     if (placement === excludedPlacement) {
       return false;
     }
 
-    const existingFootprint = getPlacementFootprint(
-      placement.x,
-      placement.y,
-      placement.width,
-      placement.height,
+    const existingFootprint = shrinkFootprint(
+      getPlacementFootprint(
+        placement.x,
+        placement.y,
+        placement.width,
+        placement.height,
+      ),
+      PLACEMENT_OVERLAP_RATIO,
     );
     return !(
       nextFootprint.right <= existingFootprint.left ||
