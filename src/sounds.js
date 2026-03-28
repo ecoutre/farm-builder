@@ -69,6 +69,16 @@ function playNoise(duration, { gain = 0.15, filterFreq = 2000, filterQ = 1, atta
   source.start(now);
 }
 
+function playSample(src, volume = 0.5) {
+  try {
+    const audio = new Audio(src);
+    audio.volume = volume;
+    audio.play().catch(() => {});
+  } catch {
+    // Audio not available
+  }
+}
+
 const PLACEMENT_SOUNDS = {
   barn() {
     playTone(120, 0.25, { type: "triangle", gain: 0.35, decay: 0.22 });
@@ -88,21 +98,15 @@ const PLACEMENT_SOUNDS = {
   },
 
   cow() {
-    playTone(180, 0.2, { type: "sawtooth", gain: 0.15, detune: 10, decay: 0.18 });
-    playTone(200, 0.15, { type: "sine", gain: 0.1, decay: 0.12 });
-    playNoise(0.06, { gain: 0.06, filterFreq: 800 });
+    playSample("./src/assets/sounds/cow-moo.mp3", 0.5);
   },
 
   chicken() {
-    playTone(800, 0.06, { type: "sine", gain: 0.2, decay: 0.05 });
-    playTone(1000, 0.05, { type: "sine", gain: 0.15, decay: 0.04 });
-    playTone(900, 0.07, { type: "triangle", gain: 0.1, decay: 0.06 });
+    playSample("./src/assets/sounds/chicken-cluck.mp3", 0.5);
   },
 
   "apple-tree"() {
-    playTone(200, 0.2, { type: "triangle", gain: 0.2, decay: 0.18 });
-    playNoise(0.2, { gain: 0.1, filterFreq: 3500, filterQ: 0.3, decay: 0.18 });
-    playTone(260, 0.12, { type: "sine", gain: 0.08, decay: 0.1 });
+    playSample("./src/assets/sounds/apple-bite.mp3", 0.6);
   },
 };
 
