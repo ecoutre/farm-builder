@@ -63,22 +63,26 @@ let activePlacementDrag = null;
 const T = 16;
 const TILE_DRAW_SIZE = T;
 
-const FARMER_SPRITE_W = 16;
-const FARMER_SPRITE_H = 22;
-const FARMER_SCALE = 2;
+const FARMER_SPRITE_W = 48;
+const FARMER_SPRITE_H = 48;
+const FARMER_SCALE = 1.5;
 const FARMER_DISPLAY_W = FARMER_SPRITE_W * FARMER_SCALE;
 const FARMER_DISPLAY_H = FARMER_SPRITE_H * FARMER_SCALE;
 const FARMER_SPEED = 2.5;
-const FARMER_HITBOX_W = FARMER_DISPLAY_W * 0.7;
-const FARMER_HITBOX_H = FARMER_DISPLAY_H * 0.36;
+const FARMER_HITBOX_W = 24 * FARMER_SCALE;
+const FARMER_HITBOX_H = 16 * FARMER_SCALE;
 
 const farmerState = {
   x: 0,
   y: 0,
   keys: {},
   element: null,
-  spriteUrl: null,
+  spriteUrl: "./src/assets/sprites/farmer.png",
   initialized: false,
+  direction: 0, // 0: down, 1: left, 2: up, 3: right
+  frame: 0,
+  isMoving: false,
+  animTimer: 0,
 };
 
 const GP = ["#3d6b1e", "#4a7a28", "#5a8c30", "#77a34f", "#8fbc5b"];
@@ -921,100 +925,18 @@ function setupPlacementInput() {
   });
 }
 
-function buildFarmerSprite() {
-  const w = FARMER_SPRITE_W;
-  const h = FARMER_SPRITE_H;
-  const cvs = document.createElement("canvas");
-  cvs.width = w;
-  cvs.height = h;
-  const c = cvs.getContext("2d");
-  if (!c) throw new Error("Failed to create farmer sprite context.");
-  c.imageSmoothingEnabled = false;
-
-  const hat = "#c8a850";
-  const hatBand = "#8b5e2f";
-  const skin = "#f5c8a0";
-  const hair = "#5c3a1e";
-  const shirt = "#4a7a28";
-  const overall = "#5b8fd4";
-  const belt = "#3a2314";
-  const boot = "#5c3a1e";
-
-  const pixels = [
-    "......HHHHHH....",
-    ".....HHHHHHHH...",
-    "....HhHHHHHhH..",
-    "....hhhhhhhhhh..",
-    ".....rSSSSSSr...",
-    ".....SSSSSSSS...",
-    "......SeeSes....",
-    "......SSSSSS....",
-    ".......SmSS.....",
-    ".......SSSS.....",
-    "......GGGGGG....",
-    ".....GGGGGGGG...",
-    "..ss.GGGGGGGG.s.",
-    "..sssGGbGGbGGss.",
-    "...ssGGGGGGGGs..",
-    "......GGGGGG....",
-    "......OOOOOO....",
-    "......OOOOOO....",
-    ".....OOO.OOO....",
-    ".....OOO.OOO....",
-    ".....BBB.BBB....",
-    "....BBBB.BBBB...",
-  ];
-
-  const colorMap = {
-    H: hat,
-    h: hatBand,
-    S: skin,
-    r: hair,
-    e: "#2d1a0a",
-    m: "#c27a5a",
-    G: shirt,
-    b: belt,
-    O: overall,
-    B: boot,
-    s: skin,
-  };
-
-  for (let row = 0; row < h; row++) {
-    const line = pixels[row] || "";
-    for (let col = 0; col < w; col++) {
-      const ch = line[col];
-      if (ch && ch !== "." && colorMap[ch]) {
-        c.fillStyle = colorMap[ch];
-        c.fillRect(col, row, 1, 1);
-      }
-    }
-  }
-
-  return cvs.toDataURL();
-}
-
 function createFarmerElement() {
   const { placementLayer } = getUIRefs();
   const el = document.createElement("div");
   el.className = "farmer-character";
   el.setAttribute("aria-label", "Farmer");
 
-  if (!farmerState.spriteUrl) {
-    farmerState.spriteUrl = buildFarmerSprite();
-  }
-
-  const img = document.createElement("img");
-  img.src = farmerState.spriteUrl;
-  img.alt = "";
-  img.draggable = false;
-  img.style.width = "100%";
-  img.style.height = "100%";
-  img.style.objectFit = "contain";
-  img.style.imageRendering = "pixelated";
-  el.appendChild(img);
-
   el.style.width = `${FARMER_DISPLAY_W}px`;
   el.style.height = `${FARMER_DISPLAY_H}px`;
+  el.style.backgroundImage = `url(${farmerState.spriteUrl})`;
+  el.style.backgroundSize = `${FARMER_DISPLAY_W * 4}px ${FARMER_DISPLAY_H * 4}px`;
+  el.style.backgroundRepeat = "no-repeat";
+  
   placementLayer.appendChild(el);
   farmerState.element = el;
 }
@@ -1033,6 +955,10 @@ function updateFarmerPosition() {
   if (!farmerState.element) return;
   farmerState.element.style.left = `${farmerState.x}px`;
   farmerState.element.style.top = `${farmerState.y}px`;
+
+  const bgX = -(farmerState.frame * FARMER_DISPLAY_W);
+  const bgY = -(farmerState.direction * FARMER_DISPLAY_H);
+  farmerState.element.style.backgroundPosition = `${bgX}px ${bgY}px`;
 }
 
 function getFarmerFootprint(cx, cy) {
@@ -1071,7 +997,31 @@ function updateFarmerMovement() {
   if (keys["ArrowUp"] || keys["w"]) dy -= 1;
   if (keys["ArrowDown"] || keys["s"]) dy += 1;
 
-  if (dx === 0 && dy === 0) return;
+  farmerState.isMoving = dx !== 0 || dy !== 0;
+
+  if (farmerState.isMoving) {
+    // Determine direction
+    // Typical RPG Maker format: 0=Down, 1=Left, 2=Right, 3=Up
+    // Let's assume: 0=Down, 1=Left, 2=Up, 3=Right for George
+    if (dy > 0) farmerState.direction = 0;
+    else if (dx < 0) farmerState.direction = 1;
+    else if (dy < 0) farmerState.direction = 2;
+    else if (dx > 0) farmerState.direction = 3;
+
+    farmerState.animTimer += 1;
+    if (farmerState.animTimer > 8) {
+      farmerState.animTimer = 0;
+      farmerState.frame = (farmerState.frame + 1) % 4;
+    }
+  } else {
+    farmerState.frame = 0;
+    farmerState.animTimer = 0;
+  }
+
+  if (dx === 0 && dy === 0) {
+    updateFarmerPosition();
+    return;
+  }
 
   if (dx !== 0 && dy !== 0) {
     const inv = 1 / Math.SQRT2;
