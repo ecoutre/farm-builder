@@ -1,11 +1,9 @@
 const VIEW_ID = "game-view";
-const BACKGROUND_ID = "farm-background";
 const TOOLBAR_ID = "toolbar-buttons";
 const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
 const PLACED_OBJECT_BASE_SIZE = 40;
 const PLACED_OBJECT_SCALE_UP = 2;
-const SKY_HEIGHT_RATIO = 0.32;
 const FARM_OBJECTS = [
   {
     id: "barn",
@@ -61,198 +59,15 @@ const state = {
   },
 };
 let activePlacementDrag = null;
-const SOURCE_TILE_SIZE = 32;
-const TILE_SCALE = 3;
-const TILE_DRAW_SIZE = SOURCE_TILE_SIZE * TILE_SCALE;
-const GRASS_PALETTE = ["#5e9345", "#679c4b", "#70a852", "#7eb760", "#8bc96b"];
-let cachedGrassTiles = null;
-const BLADE_STAMPS = [
-  {
-    blade: [
-      [0, 2, 2],
-      [1, 1, 3],
-      [2, 0, 4],
-    ],
-    shadow: [
-      [0, 3, 0],
-      [1, 3, 0],
-    ],
-  },
-  {
-    blade: [
-      [0, 0, 4],
-      [1, 1, 3],
-      [2, 2, 2],
-    ],
-    shadow: [
-      [1, 3, 0],
-      [2, 3, 0],
-    ],
-  },
-  {
-    blade: [
-      [0, 1, 2],
-      [1, 0, 3],
-    ],
-    shadow: [[0, 2, 0]],
-  },
-  {
-    blade: [
-      [0, 2, 2],
-      [1, 2, 3],
-      [2, 1, 3],
-      [3, 0, 4],
-    ],
-    shadow: [
-      [1, 3, 0],
-      [2, 3, 0],
-    ],
-  },
-];
 
-function hash2D(x, y) {
-  const value = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123;
-  return value - Math.floor(value);
-}
-
-function getViewAndCanvas() {
+function getView() {
   const view = document.getElementById(VIEW_ID);
-  const canvas = document.getElementById(BACKGROUND_ID);
 
-  if (!view || !canvas) {
-    throw new Error("Game view or background canvas is missing.");
+  if (!view) {
+    throw new Error("Game view is missing.");
   }
 
-  return { view, canvas };
-}
-
-function drawWrappedPixel(tileCtx, x, y, colorIndex) {
-  const wrappedX = (x + SOURCE_TILE_SIZE) % SOURCE_TILE_SIZE;
-  const wrappedY = (y + SOURCE_TILE_SIZE) % SOURCE_TILE_SIZE;
-  tileCtx.fillStyle = GRASS_PALETTE[colorIndex];
-  tileCtx.fillRect(wrappedX, wrappedY, 1, 1);
-}
-
-function drawBladeStamp(tileCtx, originX, originY, stamp) {
-  for (const [dx, dy, colorIndex] of stamp.blade) {
-    drawWrappedPixel(tileCtx, originX + dx, originY + dy, colorIndex);
-  }
-
-  for (const [dx, dy, colorIndex] of stamp.shadow) {
-    drawWrappedPixel(tileCtx, originX + dx, originY + dy, colorIndex);
-  }
-}
-
-function createGrassTile(seedOffset) {
-  const tile = document.createElement("canvas");
-  tile.width = SOURCE_TILE_SIZE;
-  tile.height = SOURCE_TILE_SIZE;
-
-  const tileCtx = tile.getContext("2d");
-  if (!tileCtx) {
-    throw new Error("Failed to create grass tile context.");
-  }
-
-  tileCtx.imageSmoothingEnabled = false;
-  tileCtx.fillStyle = GRASS_PALETTE[1];
-  tileCtx.fillRect(0, 0, SOURCE_TILE_SIZE, SOURCE_TILE_SIZE);
-
-  for (let y = 0; y < SOURCE_TILE_SIZE; y += 1) {
-    for (let x = 0; x < SOURCE_TILE_SIZE; x += 1) {
-      const macroCluster = hash2D(
-        Math.floor((x + seedOffset * 2) / 3),
-        Math.floor((y + seedOffset * 4) / 3),
-      );
-      let colorIndex = 1;
-
-      if (macroCluster > 0.72) {
-        colorIndex = 2;
-      } else if (macroCluster < 0.24) {
-        colorIndex = 0;
-      }
-
-      if (hash2D(x + seedOffset * 19, y + seedOffset * 23) > 0.988) {
-        colorIndex = 3;
-      }
-
-      tileCtx.fillStyle = GRASS_PALETTE[colorIndex];
-      tileCtx.fillRect(x, y, 1, 1);
-    }
-  }
-
-  for (let y = 0; y < SOURCE_TILE_SIZE; y += 2) {
-    for (let x = 0; x < SOURCE_TILE_SIZE; x += 2) {
-      const placement = hash2D(
-        Math.floor((x + seedOffset * 11) / 2),
-        Math.floor((y + seedOffset * 7) / 2),
-      );
-
-      if (placement < 0.9) {
-        continue;
-      }
-
-      const stampIndex = Math.floor(
-        hash2D(x + seedOffset * 29, y + seedOffset * 31) * BLADE_STAMPS.length,
-      );
-      const stamp = BLADE_STAMPS[stampIndex];
-      drawBladeStamp(tileCtx, x, y, stamp);
-
-      if (hash2D(x + seedOffset * 43, y + seedOffset * 47) > 0.993) {
-        drawWrappedPixel(tileCtx, x + 1, y, 4);
-      }
-    }
-  }
-
-  return tile;
-}
-
-function getGrassTiles() {
-  if (!cachedGrassTiles) {
-    cachedGrassTiles = [0, 1, 2].map((seedOffset) => createGrassTile(seedOffset));
-  }
-
-  return cachedGrassTiles;
-}
-
-function getFarmTop(height) {
-  return Math.round(height * SKY_HEIGHT_RATIO);
-}
-
-function drawBackground(ctx, width, height) {
-  const farmTop = getFarmTop(height);
-  const skyGradient = ctx.createLinearGradient(0, 0, 0, farmTop);
-  skyGradient.addColorStop(0, "#78c6ff");
-  skyGradient.addColorStop(1, "#d9f4ff");
-  ctx.fillStyle = skyGradient;
-  ctx.fillRect(0, 0, width, farmTop);
-  ctx.fillStyle = "#d8e9a0";
-  ctx.fillRect(0, Math.max(0, farmTop - 8), width, 8);
-
-  const tiles = getGrassTiles();
-  const cols = Math.ceil(width / TILE_DRAW_SIZE);
-  const rows = Math.ceil(height / TILE_DRAW_SIZE);
-  ctx.imageSmoothingEnabled = false;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, farmTop, width, Math.max(0, height - farmTop));
-  ctx.clip();
-
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
-      const tileIndex = Math.floor(hash2D(col + 11, row + 19) * tiles.length);
-      const tile = tiles[tileIndex];
-
-      ctx.drawImage(
-        tile,
-        col * TILE_DRAW_SIZE,
-        row * TILE_DRAW_SIZE,
-        TILE_DRAW_SIZE,
-        TILE_DRAW_SIZE,
-      );
-    }
-  }
-
-  ctx.restore();
+  return view;
 }
 
 function getUIRefs() {
@@ -486,7 +301,7 @@ function getSnappedPlacement(
   offsetX = 0,
   offsetY = 0,
 ) {
-  const { view } = getViewAndCanvas();
+  const view = getView();
   const bounds = view.getBoundingClientRect();
   const relativeX = clientX - bounds.left - offsetX;
   const relativeY = clientY - bounds.top - offsetY;
@@ -585,7 +400,7 @@ function startPlacementDrag(placement, objectEl, event) {
 
   event.preventDefault();
 
-  const { view } = getViewAndCanvas();
+  const view = getView();
   const bounds = view.getBoundingClientRect();
   activePlacementDrag = {
     placement,
@@ -678,26 +493,25 @@ function endPlacementDrag(event) {
 }
 
 function setupPlacementInput() {
-  const { canvas } = getViewAndCanvas();
+  const view = getView();
 
-  canvas.addEventListener("pointermove", (event) => {
+  view.addEventListener("pointermove", (event) => {
     state.preview.clientX = event.clientX;
     state.preview.clientY = event.clientY;
     state.preview.isPointerActive = true;
     updatePlacementPreview(event.clientX, event.clientY);
   });
 
-  canvas.addEventListener("pointerleave", () => {
+  view.addEventListener("pointerleave", () => {
     state.preview.isPointerActive = false;
     hidePlacementPreview();
   });
 
-  canvas.addEventListener("click", (event) => {
+  view.addEventListener("click", (event) => {
     state.preview.clientX = event.clientX;
     state.preview.clientY = event.clientY;
 
     if (placeObject(event.clientX, event.clientY)) {
-      // Keep the freshly placed object visible until the pointer moves again.
       state.preview.isPointerActive = false;
       hidePlacementPreview();
       return;
@@ -708,27 +522,7 @@ function setupPlacementInput() {
   });
 }
 
-function resizeAndRender() {
-  const { view, canvas } = getViewAndCanvas();
-  const bounds = view.getBoundingClientRect();
-  const width = Math.max(1, Math.round(bounds.width));
-  const height = Math.max(1, Math.round(bounds.height));
-  const pixelRatio = window.devicePixelRatio || 1;
-
-  canvas.width = Math.round(width * pixelRatio);
-  canvas.height = Math.round(height * pixelRatio);
-  canvas.style.width = `${Math.round(width)}px`;
-  canvas.style.height = `${Math.round(height)}px`;
-
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("Failed to get 2D rendering context.");
-  }
-
-  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-  ctx.clearRect(0, 0, width, height);
-  drawBackground(ctx, width, height);
-
+function handleResize() {
   if (state.preview.isPointerActive) {
     updatePlacementPreview(state.preview.clientX, state.preview.clientY);
   }
@@ -739,8 +533,8 @@ export function init() {
   syncPreviewObject();
   setActiveObject(state.activeObjectId);
   setupPlacementInput();
-  resizeAndRender();
-  window.addEventListener("resize", resizeAndRender);
+  handleResize();
+  window.addEventListener("resize", handleResize);
 }
 
 if (typeof window !== "undefined") {
