@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 function installDom() {
   document.body.innerHTML = `
     <main id="game-view" class="game-view" aria-label="Farm game view">
+      <canvas
+        id="farm-background"
+        class="background-layer"
+        aria-label="Farm ground background"
+      ></canvas>
       <section
         id="placement-layer"
         class="placement-layer"
@@ -20,8 +25,9 @@ function installDom() {
   `;
 
   const view = document.getElementById("game-view");
+  const canvas = document.getElementById("farm-background");
 
-  if (!view) {
+  if (!view || !canvas) {
     throw new Error("Expected game view markup to be installed.");
   }
 
@@ -35,6 +41,23 @@ function installDom() {
   };
 
   view.getBoundingClientRect = () => bounds;
+  canvas.getBoundingClientRect = () => bounds;
+  HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
+    imageSmoothingEnabled: false,
+    fillStyle: "",
+    save: vi.fn(),
+    restore: vi.fn(),
+    beginPath: vi.fn(),
+    rect: vi.fn(),
+    clip: vi.fn(),
+    fillRect: vi.fn(),
+    clearRect: vi.fn(),
+    setTransform: vi.fn(),
+    drawImage: vi.fn(),
+    createLinearGradient: vi.fn(() => ({
+      addColorStop: vi.fn(),
+    })),
+  }));
 }
 
 function dispatchPointerMove(target, clientX, clientY) {

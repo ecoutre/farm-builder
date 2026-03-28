@@ -1,4 +1,5 @@
 const VIEW_ID = "game-view";
+const BACKGROUND_ID = "farm-background";
 const TOOLBAR_ID = "toolbar-buttons";
 const PLACEMENT_LAYER_ID = "placement-layer";
 const PLACE_GRID_SIZE = 12;
@@ -902,7 +903,28 @@ function setupPlacementInput() {
   });
 }
 
-function handleResize() {
+function resizeAndRender() {
+  const view = getView();
+  const canvas = document.getElementById(BACKGROUND_ID);
+  if (!canvas) return;
+
+  const bounds = view.getBoundingClientRect();
+  const width = Math.max(1, Math.round(bounds.width));
+  const height = Math.max(1, Math.round(bounds.height));
+  const pixelRatio = window.devicePixelRatio || 1;
+
+  canvas.width = Math.round(width * pixelRatio);
+  canvas.height = Math.round(height * pixelRatio);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  drawBackground(ctx, width, height);
+
   if (state.preview.isPointerActive) {
     updatePlacementPreview(state.preview.clientX, state.preview.clientY);
   }
@@ -913,8 +935,8 @@ export function init() {
   syncPreviewObject();
   setActiveObject(state.activeObjectId);
   setupPlacementInput();
-  handleResize();
-  window.addEventListener("resize", handleResize);
+  resizeAndRender();
+  window.addEventListener("resize", resizeAndRender);
 }
 
 if (typeof window !== "undefined") {
