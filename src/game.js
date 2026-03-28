@@ -64,10 +64,8 @@ const T = 16;
 const TILE_DRAW_SIZE = T;
 
 const GP = ["#3d6b1e", "#4a7a28", "#5a8c30", "#77a34f", "#8fbc5b"];
-const DP = ["#a07830", "#b09040", "#c8a850", "#d4b45a", "#dfc070"];
+const DP = ["#c8a850", "#d4b45a", "#dfc070"];
 const FP = ["#7a9030", "#98b048"];
-
-const BAYER = [[0,1,0,2],[1,0,2,0],[0,2,0,1],[2,0,1,0]];
 
 let _grassTiles = null;
 let _dirtTiles = null;
@@ -105,16 +103,19 @@ function getViewAndCanvas() {
 }
 
 function grassPx(x, y) {
-  const ci = [1, 2, 3];
-  return GP[ci[BAYER[y & 3][x & 3]]];
+  if ((x + y) % 2 === 0) {
+    return GP[1];
+  }
+  const h = hash2D(x * 131 + 7, y * 197 + 13);
+  if (h < 0.75) return GP[2];
+  return GP[3];
 }
 
 function dirtPx(x, y, seed) {
   const h = hash2D(x + seed * 17, y + seed * 31);
-  if (h < 0.02) return DP[0];
-  if (h < 0.10) return DP[3];
-  if (h > 0.95) return DP[4];
-  return DP[2];
+  if (h < 0.08) return DP[1];
+  if (h > 0.95) return DP[2];
+  return DP[0];
 }
 
 function buildGrassTiles() {
@@ -203,6 +204,27 @@ function buildGrassMap(cols, rows) {
       map[r * cols + c] = dirt ? 0 : 1;
     }
   }
+
+  const copy = new Uint8Array(map);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (copy[r * cols + c] !== 1) continue;
+      let dirtCardinal = 0;
+      let dirtDiag = 0;
+      if (r > 0 && copy[(r - 1) * cols + c] === 0) dirtCardinal++;
+      if (r < rows - 1 && copy[(r + 1) * cols + c] === 0) dirtCardinal++;
+      if (c > 0 && copy[r * cols + c - 1] === 0) dirtCardinal++;
+      if (c < cols - 1 && copy[r * cols + c + 1] === 0) dirtCardinal++;
+      if (r > 0 && c > 0 && copy[(r - 1) * cols + c - 1] === 0) dirtDiag++;
+      if (r > 0 && c < cols - 1 && copy[(r - 1) * cols + c + 1] === 0) dirtDiag++;
+      if (r < rows - 1 && c > 0 && copy[(r + 1) * cols + c - 1] === 0) dirtDiag++;
+      if (r < rows - 1 && c < cols - 1 && copy[(r + 1) * cols + c + 1] === 0) dirtDiag++;
+      if (dirtCardinal >= 2 && dirtDiag >= 1) {
+        map[r * cols + c] = 0;
+      }
+    }
+  }
+
   return map;
 }
 
@@ -250,15 +272,20 @@ function renderGrassBorder(ctx, ox, oy, col, row, map, cols, rows) {
       if (s && w) dist = Math.min(dist, Math.sqrt(x * x + (15 - y) * (15 - y)) * 0.75);
       if (s && e) dist = Math.min(dist, Math.sqrt((15 - x) * (15 - x) + (15 - y) * (15 - y)) * 0.75);
 
+      const skipF = ((col + row * 7) % 10) >= 8;
+      const fW = skipF ? 0 : (hash2D(col * 53 + 301, row * 59 + 401) < 0.5 ? 1 : 2);
+
       let color;
       if (dist >= 6) {
         color = grassPx(x, y);
       } else if (dist >= 4) {
-        color = (x + y) % 2 === 0 ? grassPx(x, y) : DP[2];
-      } else if (dist >= 2) {
+        color = (x + y) % 2 === 0 ? grassPx(x, y) : DP[0];
+      } else if (dist >= fW) {
         color = dirtPx(x, y, tileVar(col, row, 3));
-      } else {
+      } else if (fW > 0) {
         color = (x + y) % 2 === 0 ? FP[0] : FP[1];
+      } else {
+        color = dirtPx(x, y, tileVar(col, row, 3));
       }
 
       ctx.fillStyle = color;
@@ -280,32 +307,47 @@ function renderDirtBorder(ctx, ox, oy, col, row, map, cols, rows) {
   const gSW = isG(map, col - 1, row + 1, cols, rows);
   const gSE = isG(map, col + 1, row + 1, cols, rows);
 
-  if (gN) {
+  const skipFringe = ((col + row * 7) % 10) >= 8;
+  const fringeW = skipFringe ? 0 : (hash2D(col * 53 + 301, row * 59 + 401) < 0.5 ? 1 : 2);
+
+  if (gN && fringeW > 0) {
     for (let x = 0; x < T; x++) {
-      ctx.fillStyle = x % 2 === 0 ? FP[1] : DP[2];
+      ctx.fillStyle = (x + 0) % 2 === 0 ? FP[0] : FP[1];
       ctx.fillRect(ox + x, oy, 1, 1);
-      ctx.fillRect(ox + x, oy + 1, 1, 1);
+      if (fringeW === 2) {
+        ctx.fillStyle = (x + 1) % 2 === 0 ? FP[1] : DP[0];
+        ctx.fillRect(ox + x, oy + 1, 1, 1);
+      }
     }
   }
-  if (gS) {
+  if (gS && fringeW > 0) {
     for (let x = 0; x < T; x++) {
-      ctx.fillStyle = x % 2 === 0 ? FP[1] : DP[2];
-      ctx.fillRect(ox + x, oy + 14, 1, 1);
+      ctx.fillStyle = (x + 0) % 2 === 0 ? FP[0] : FP[1];
       ctx.fillRect(ox + x, oy + 15, 1, 1);
+      if (fringeW === 2) {
+        ctx.fillStyle = (x + 1) % 2 === 0 ? FP[1] : DP[0];
+        ctx.fillRect(ox + x, oy + 14, 1, 1);
+      }
     }
   }
-  if (gW) {
+  if (gW && fringeW > 0) {
     for (let y = 0; y < T; y++) {
-      ctx.fillStyle = y % 2 === 0 ? FP[1] : DP[2];
+      ctx.fillStyle = (y + 0) % 2 === 0 ? FP[0] : FP[1];
       ctx.fillRect(ox, oy + y, 1, 1);
-      ctx.fillRect(ox + 1, oy + y, 1, 1);
+      if (fringeW === 2) {
+        ctx.fillStyle = (y + 1) % 2 === 0 ? FP[1] : DP[0];
+        ctx.fillRect(ox + 1, oy + y, 1, 1);
+      }
     }
   }
-  if (gE) {
+  if (gE && fringeW > 0) {
     for (let y = 0; y < T; y++) {
-      ctx.fillStyle = y % 2 === 0 ? FP[1] : DP[2];
-      ctx.fillRect(ox + 14, oy + y, 1, 1);
+      ctx.fillStyle = (y + 0) % 2 === 0 ? FP[0] : FP[1];
       ctx.fillRect(ox + 15, oy + y, 1, 1);
+      if (fringeW === 2) {
+        ctx.fillStyle = (y + 1) % 2 === 0 ? FP[1] : DP[0];
+        ctx.fillRect(ox + 14, oy + y, 1, 1);
+      }
     }
   }
 
@@ -345,39 +387,6 @@ function renderDirtBorder(ctx, ox, oy, col, row, map, cols, rows) {
         if (dx + dy <= 3) {
           ctx.fillStyle = grassPx(15 - dx, 15 - dy);
           ctx.fillRect(ox + 15 - dx, oy + 15 - dy, 1, 1);
-        }
-      }
-    }
-  }
-}
-
-function drawDirtDepressions(ctx, map, cols, rows) {
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      if (isG(map, col, row, cols, rows)) continue;
-      if (hash2D(col * 7 + 101, row * 11 + 203) > 0.30) continue;
-
-      const ox = col * T;
-      const oy = row * T;
-      const pcx = ox + Math.floor(hash2D(col * 13, row * 17) * 6) + 5;
-      const pcy = oy + Math.floor(hash2D(col * 19, row * 23) * 4) + 5;
-      const rw = Math.floor(hash2D(col * 29, row * 31) * 2) + 4;
-      const rh = Math.floor(hash2D(col * 37, row * 41) * 1) + 2;
-
-      ctx.fillStyle = DP[1];
-      for (let dy = -rh - 1; dy <= rh + 1; dy++) {
-        for (let dx = -rw - 1; dx <= rw + 1; dx++) {
-          if ((dx * dx) / ((rw + 1) * (rw + 1)) + (dy * dy) / ((rh + 1) * (rh + 1)) <= 1) {
-            ctx.fillRect(pcx + dx, pcy + dy, 1, 1);
-          }
-        }
-      }
-      ctx.fillStyle = DP[0];
-      for (let dy = -rh; dy <= rh; dy++) {
-        for (let dx = -rw; dx <= rw; dx++) {
-          if ((dx * dx) / (rw * rw) + (dy * dy) / (rh * rh) <= 1) {
-            ctx.fillRect(pcx + dx, pcy + dy, 1, 1);
-          }
         }
       }
     }
@@ -429,7 +438,6 @@ function drawBackground(ctx, width, height) {
     }
   }
 
-  drawDirtDepressions(ctx, map, cols, rows);
   drawGrassTufts(ctx, map, cols, rows);
 }
 
