@@ -63,14 +63,14 @@ let activePlacementDrag = null;
 const T = 16;
 const TILE_DRAW_SIZE = T;
 
-const FARMER_SPRITE_W = 48;
-const FARMER_SPRITE_H = 48;
-const FARMER_SCALE = 1.5;
+const FARMER_SPRITE_W = 64;
+const FARMER_SPRITE_H = 64;
+const FARMER_SCALE = 1;
 const FARMER_DISPLAY_W = FARMER_SPRITE_W * FARMER_SCALE;
 const FARMER_DISPLAY_H = FARMER_SPRITE_H * FARMER_SCALE;
 const FARMER_SPEED = 2.5;
-const FARMER_HITBOX_W = 16 * FARMER_SCALE;
-const FARMER_HITBOX_H = 16 * FARMER_SCALE;
+const FARMER_HITBOX_W = 20;
+const FARMER_HITBOX_H = 14;
 
 const farmerState = {
   x: 0,
@@ -1000,11 +1000,10 @@ function updateFarmerMovement() {
   farmerState.isMoving = dx !== 0 || dy !== 0;
 
   if (farmerState.isMoving) {
-    // Determine direction
-    // Sprout Lands format: 0=Down, 1=Up, 2=Left, 3=Right
+    // Row order: 0=Down, 1=Left, 2=Up, 3=Right
     if (dy > 0) farmerState.direction = 0;
-    else if (dy < 0) farmerState.direction = 1;
-    else if (dx < 0) farmerState.direction = 2;
+    else if (dx < 0) farmerState.direction = 1;
+    else if (dy < 0) farmerState.direction = 2;
     else if (dx > 0) farmerState.direction = 3;
 
     farmerState.animTimer += 1;
